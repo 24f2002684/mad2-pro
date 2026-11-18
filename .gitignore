@@ -1,0 +1,29 @@
+# Environments
+venv/
+env/
+ENV/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Instance folder & databases
+instance/
+*.db
+*.sqlite3
+
+# Celery and Redis artifacts
+dump.rdb
+
+# Application logs & exports
+outbox.log
+exports/*.csv
+!exports/.gitkeep
+
+# Environment variables & editor
+.env
+.DS_Store
+node_modules/
+.vscode/
+.idea/
