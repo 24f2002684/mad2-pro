@@ -1,0 +1,36 @@
+/* static/css/style.css */
+/* Minimal styling additions for EMP-V2 */
+
+body {
+    background-color: #f8f9fa;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+main {
+    flex: 1;
+}
+
+.card {
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+}
+
+.table th {
+    background-color: #f1f3f5;
+    font-weight: 600;
+}
+
+.badge {
+    font-size: 0.85rem;
+    padding: 0.35em 0.65em;
+}
+
+.nav-link.active {
+    font-weight: 600;
+}
+
+.cursor-pointer {
+    cursor: pointer;
+}

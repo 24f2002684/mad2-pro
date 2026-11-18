@@ -7,6 +7,7 @@ from werkzeug.security import generate_password_hash
 from config import Config
 from extensions import db, jwt
 from models import User
+from routes.auth import auth_bp
 
 def create_admin(app):
     # Programmatically creates the default admin user if one does not exist
@@ -42,10 +43,13 @@ def create_app(config_class=Config):
         db.create_all()
         create_admin(app)
 
+    # Register API blueprints
+    app.register_blueprint(auth_bp)
+
     # Entry point route for Single Page Application
     @app.route("/")
     def index():
-        return jsonify({"message": "Examination Management Portal V2 API is running", "status": "OK"})
+        return render_template("index.html")
 
     return app
 

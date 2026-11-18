@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Examination Management Portal V2 (EMP-V2)</title>
+    <!-- Bootstrap 5 CSS -->
+    <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
+    <!-- Custom Styles -->
+    <link rel="stylesheet" href="/static/css/style.css">
+    <!-- Favicon -->
+    <link rel="icon" href="data:,">
+</head>
+<body>
+    <div id="app">
+        <navbar :search-query="searchQuery" @update:search-query="onSearch" @logout="onLogout"></navbar>
+        <main class="container my-4">
+            <router-view :search-query="searchQuery"></router-view>
+        </main>
+        <footer class="py-3 bg-white border-top text-center text-muted small mt-auto">
+            EMP-V2 &bull; IIT Madras BS Degree Modern Application Development II
+        </footer>
+    </div>
+
+    <!-- Vendor Scripts (Offline) -->
+    <script src="/static/vendor/bootstrap.bundle.min.js"></script>
+    <script src="/static/vendor/vue.global.prod.js"></script>
+    <script src="/static/vendor/vue-router.global.prod.js"></script>
+    <script src="/static/vendor/chart.umd.min.js"></script>
+
+    <!-- API Client Helper -->
+    <script src="/static/js/api.js"></script>
+
+    <!-- Vue Components -->
+    <script src="/static/js/components/Navbar.js"></script>
+    <script src="/static/js/components/Login.js"></script>
+    <script src="/static/js/components/Register.js"></script>
+    <script src="/static/js/components/AdminDashboard.js"></script>
+    <script src="/static/js/components/ExaminerDashboard.js"></script>
+    <script src="/static/js/components/StudentDashboard.js"></script>
+
+    <!-- Main Vue App & Router Entry Point -->
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

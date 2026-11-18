@@ -7,8 +7,8 @@ import os
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 class Config:
-    SECRET_KEY = os.environ.get("SECRET_KEY", "emp-v2-super-secret-key-2026")
-    JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "emp-v2-jwt-secret-key-2026")
+    SECRET_KEY = os.environ.get("SECRET_KEY", "emp-v2-super-secret-key-iitm-mad2-2026")
+    JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "emp-v2-jwt-secret-key-iitm-mad2-2026")
     SQLALCHEMY_DATABASE_URI = "sqlite:///" + os.path.join(BASE_DIR, "emp_v2.db")
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
