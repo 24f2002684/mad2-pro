@@ -2,6 +2,7 @@
 # Application factory for the Examination Management Portal V2.
 # Configures extensions, registers API blueprints, creates database tables, and seeds the default admin.
 
+import os
 from flask import Flask, render_template, jsonify
 from werkzeug.security import generate_password_hash
 from config import Config
@@ -36,6 +37,9 @@ def create_app(config_class=Config):
     # Flask application factory
     app = Flask(__name__, template_folder="templates", static_folder="static")
     app.config.from_object(config_class)
+
+    # Ensure runtime export directory exists
+    os.makedirs(os.path.join(app.config.get("BASE_DIR", Config.BASE_DIR), "exports"), exist_ok=True)
 
     # Initialize extensions
     db.init_app(app)

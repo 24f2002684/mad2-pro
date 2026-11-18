@@ -1,31 +1,47 @@
 # Environments
 venv/
+.venv/
 env/
 ENV/
 
-# Python cache
+# Python cache & compiled files
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
 
 # Instance folder & databases
 instance/
 *.db
 *.db*
+*.sqlite
 *.sqlite3
 *.sqlite*
 
 # Celery and Redis artifacts
 dump.rdb
+celerybeat-schedule
+celerybeat-schedule*
 
 # Application logs & exports
+*.log
 outbox.log
 exports/*.csv
 !exports/.gitkeep
 
-# Environment variables & editor
+# Submissions & Archives
+*.zip
+*.tar.gz
+
+# Environment variables & editor/system files
 .env
 .DS_Store
+Thumbs.db
 node_modules/
 .vscode/
 .idea/
+.antigravity/

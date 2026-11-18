@@ -1,0 +1,1532 @@
+openapi: 3.0.3
+info:
+  title: EMP-V2 API
+  version: 2.0.0
+  description: REST API specification for Examination Management Portal V2 (IIT Madras BS Degree - MAD-II).
+servers:
+  - url: http://localhost:5000
+    description: Local development server
+
+tags:
+  - name: Auth
+    description: Authentication, self-registration, and profile identity
+  - name: Admin
+    description: Portal administration, courses, examinations, rubrics, examiners, and analytics
+  - name: Examiner
+    description: Examiner slot scheduling, candidate roster, and rubric evaluation
+  - name: Student
+    description: Student examination browsing, slot booking, history, and CSV export
+
+paths:
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new student account
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, full_name]
+              properties:
+                email: { type: string, format: email, example: student@study.iitm.ac.in }
+                password: { type: string, minLength: 6, example: Student@123 }
+                full_name: { type: string, example: Aarav Kumar }
+                phone: { type: string, example: "9876543210" }
+                department: { type: string, example: "BS Degree" }
+      responses:
+        201:
+          description: Registration successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  user: { $ref: '#/components/schemas/User' }
+        400:
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        409:
+          description: Email already registered
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Authenticate user and receive JWT access token
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email, example: admin@emp.com }
+                password: { type: string, example: Admin@123 }
+      responses:
+        200:
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  user_id: { type: integer }
+                  email: { type: string }
+                  name: { type: string }
+                  role: { type: string }
+        401:
+          description: Invalid email or password
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        403:
+          description: Account inactive or blocked
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current authenticated user details
+      operationId: getCurrentUser
+      security: [{ bearerAuth: [] }]
+      responses:
+        200:
+          description: User profile details
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        401:
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/admin/dashboard:
+    get:
+      tags: [Admin]
+      summary: Overview count metrics across the portal
+      operationId: getAdminDashboard
+      security: [{ bearerAuth: [] }]
+      responses:
+        200:
+          description: Summary metric counts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  courses: { type: integer }
+                  exams: { type: integer }
+                  examiners: { type: integer }
+                  students: { type: integer }
+                  slots: { type: integer }
+                  bookings: { type: integer }
+        403:
+          description: Admin privilege required
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/admin/analytics:
+    get:
+      tags: [Admin]
+      summary: Chart.js analytics dataset with Redis caching
+      operationId: getAdminAnalytics
+      security: [{ bearerAuth: [] }]
+      responses:
+        200:
+          description: Aggregated analytics for participation, pass/fail, and monthly trends
+          headers:
+            X-Cache:
+              schema: { type: string, enum: [HIT, MISS] }
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  participation:
+                    type: object
+                    properties:
+                      labels: { type: array, items: { type: string } }
+                      data: { type: array, items: { type: integer } }
+                  pass_fail:
+                    type: object
+                    properties:
+                      labels: { type: array, items: { type: string } }
+                      data: { type: array, items: { type: integer } }
+                  monthly_trends:
+                    type: object
+                    properties:
+                      labels: { type: array, items: { type: string } }
+                      data: { type: array, items: { type: integer } }
+                  totals: { type: object }
+
+  /api/admin/courses:
+    get:
+      tags: [Admin]
+      summary: List all courses
+      operationId: listCourses
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema: { type: string }
+          description: Search filter on code or name
+      responses:
+        200:
+          description: List of courses
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Course' }
+    post:
+      tags: [Admin]
+      summary: Create a new academic course
+      operationId: createCourse
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, name]
+              properties:
+                code: { type: string, example: CS2001 }
+                name: { type: string, example: Modern Application Development II }
+                description: { type: string }
+      responses:
+        201:
+          description: Course created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  course: { $ref: '#/components/schemas/Course' }
+        400:
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        409:
+          description: Course code already exists
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/admin/courses/{course_id}:
+    put:
+      tags: [Admin]
+      summary: Update course details
+      operationId: updateCourse
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: course_id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code: { type: string }
+                name: { type: string }
+                description: { type: string }
+                status: { type: string, enum: [Active, Inactive] }
+      responses:
+        200:
+          description: Course updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  course: { $ref: '#/components/schemas/Course' }
+        404:
+          description: Course not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    delete:
+      tags: [Admin]
+      summary: Delete an academic course
+      operationId: deleteCourse
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: course_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        200:
+          description: Course deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        404:
+          description: Course not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/admin/exams:
+    get:
+      tags: [Admin]
+      summary: List all examinations (cached)
+      operationId: listExams
+      security: [{ bearerAuth: [] }]
+      responses:
+        200:
+          description: List of examinations
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Examination' }
+    post:
+      tags: [Admin]
+      summary: Create an examination
+      operationId: createExam
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [course_id, name, exam_type, duration, max_marks, slot_creation_start, slot_creation_end, booking_start, booking_end]
+              properties:
+                course_id: { type: integer }
+                name: { type: string }
+                exam_type: { type: string, enum: [Viva, Practical, Project Demo, Assessment] }
+                duration: { type: integer, example: 20 }
+                max_marks: { type: integer, example: 100 }
+                instructions: { type: string }
+                slot_creation_start: { type: string, format: date }
+                slot_creation_end: { type: string, format: date }
+                booking_start: { type: string, format: date }
+                booking_end: { type: string, format: date }
+      responses:
+        201:
+          description: Exam created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  exam: { $ref: '#/components/schemas/Examination' }
+        400:
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/admin/exams/{exam_id}:
+    get:
+      tags: [Admin]
+      summary: Get details of a single examination
+      operationId: getExam
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: exam_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        200:
+          description: Examination details
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Examination' }
+        404:
+          description: Exam not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    put:
+      tags: [Admin]
+      summary: Update examination parameters
+      operationId: updateExam
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: exam_id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                exam_type: { type: string }
+                duration: { type: integer }
+                max_marks: { type: integer }
+                instructions: { type: string }
+                slot_creation_start: { type: string }
+                slot_creation_end: { type: string }
+                booking_start: { type: string }
+                booking_end: { type: string }
+      responses:
+        200:
+          description: Exam updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  exam: { $ref: '#/components/schemas/Examination' }
+        404:
+          description: Exam not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    delete:
+      tags: [Admin]
+      summary: Delete an examination (allowed only in Draft state)
+      operationId: deleteExam
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: exam_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        200:
+          description: Exam deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        400:
+          description: Exam cannot be deleted in current status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        404:
+          description: Exam not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/admin/exams/{exam_id}/status:
+    put:
+      tags: [Admin]
+      summary: Advance examination lifecycle status
+      operationId: updateExamStatus
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: exam_id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [Draft, Slot Creation, Booking Open, Closed, Completed] }
+      responses:
+        200:
+          description: Status transition successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  exam: { $ref: '#/components/schemas/Examination' }
+        400:
+          description: Invalid transition
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        404:
+          description: Exam not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/admin/exams/{exam_id}/publish:
+    post:
+      tags: [Admin]
+      summary: Publish examination results and lock evaluations
+      operationId: publishResults
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: exam_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        200:
+          description: Results published
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        400:
+          description: Exam must be Completed to publish results
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/admin/exams/{exam_id}/examiners:
+    get:
+      tags: [Admin]
+      summary: List examiners assigned to an exam
+      operationId: listExamExaminers
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: exam_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        200:
+          description: Assigned examiners
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/User' }
+    post:
+      tags: [Admin]
+      summary: Assign an examiner to an exam
+      operationId: assignExaminerToExam
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: exam_id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [examiner_id]
+              properties:
+                examiner_id: { type: integer }
+      responses:
+        200:
+          description: Examiner assigned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        404:
+          description: Examiner or exam not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/admin/exams/{exam_id}/examiners/{examiner_id}:
+    delete:
+      tags: [Admin]
+      summary: Remove examiner assignment from an exam
+      operationId: removeExaminerFromExam
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: exam_id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: examiner_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        200:
+          description: Assignment removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        404:
+          description: Assignment not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/admin/exams/{exam_id}/rubrics:
+    get:
+      tags: [Admin]
+      summary: List rubric criteria for an exam
+      operationId: listRubrics
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: exam_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        200:
+          description: List of rubrics
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Rubric' }
+    post:
+      tags: [Admin]
+      summary: Add rubric criterion to an exam
+      operationId: createRubric
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: exam_id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [criterion_name, max_marks]
+              properties:
+                criterion_name: { type: string }
+                max_marks: { type: integer }
+                weightage: { type: integer }
+                description: { type: string }
+      responses:
+        201:
+          description: Rubric created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  rubric: { $ref: '#/components/schemas/Rubric' }
+        400:
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/admin/rubrics/{rubric_id}:
+    delete:
+      tags: [Admin]
+      summary: Delete a rubric criterion
+      operationId: deleteRubric
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: rubric_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        200:
+          description: Rubric deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        404:
+          description: Rubric not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/admin/examiners:
+    get:
+      tags: [Admin]
+      summary: List all examiners with profile details
+      operationId: listExaminers
+      security: [{ bearerAuth: [] }]
+      responses:
+        200:
+          description: List of examiners
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/User' }
+    post:
+      tags: [Admin]
+      summary: Provision new examiner with auto-generated password and email dispatch
+      operationId: createExaminer
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, full_name]
+              properties:
+                email: { type: string, format: email }
+                full_name: { type: string }
+                phone: { type: string }
+                department: { type: string }
+      responses:
+        201:
+          description: Examiner provisioned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  examiner: { $ref: '#/components/schemas/User' }
+        409:
+          description: Email already in use
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/admin/examiners/{user_id}/toggle-status:
+    put:
+      tags: [Admin]
+      summary: Toggle examiner active/inactive status
+      operationId: toggleExaminerStatus
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        200:
+          description: Status toggled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  is_active: { type: boolean }
+        404:
+          description: Examiner not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/admin/students:
+    get:
+      tags: [Admin]
+      summary: List all registered students
+      operationId: listStudents
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema: { type: string }
+          description: Search filter on email or full name
+      responses:
+        200:
+          description: List of students
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/User' }
+
+  /api/admin/students/{user_id}/toggle-status:
+    put:
+      tags: [Admin]
+      summary: Toggle student active/blocked status
+      operationId: toggleStudentStatus
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        200:
+          description: Status toggled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  is_active: { type: boolean }
+        404:
+          description: Student not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/admin/slots:
+    get:
+      tags: [Admin]
+      summary: Slot oversight across all examinations and examiners
+      operationId: listAllSlots
+      security: [{ bearerAuth: [] }]
+      responses:
+        200:
+          description: List of all slots
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Slot' }
+
+  /api/admin/slots/{slot_id}/examiner:
+    put:
+      tags: [Admin]
+      summary: Reassign slot to a different assigned examiner
+      operationId: changeSlotExaminer
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: slot_id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [examiner_id]
+              properties:
+                examiner_id: { type: integer }
+      responses:
+        200:
+          description: Slot reassigned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  slot: { $ref: '#/components/schemas/Slot' }
+        400:
+          description: Examiner not assigned to this exam
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        404:
+          description: Slot not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/admin/bookings:
+    get:
+      tags: [Admin]
+      summary: List all candidate bookings across the portal
+      operationId: listAllBookings
+      security: [{ bearerAuth: [] }]
+      responses:
+        200:
+          description: List of bookings
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Booking' }
+
+  /api/admin/bookings/{booking_id}/reschedule:
+    put:
+      tags: [Admin]
+      summary: Reschedule candidate booking to another available slot
+      operationId: rescheduleBooking
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: booking_id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [new_slot_id]
+              properties:
+                new_slot_id: { type: integer }
+      responses:
+        200:
+          description: Rescheduled successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  booking: { $ref: '#/components/schemas/Booking' }
+        400:
+          description: Slot full or different examination
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        404:
+          description: Booking or slot not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/admin/trigger-job/daily-reminder:
+    post:
+      tags: [Admin]
+      summary: Manually trigger Celery daily reminder batch job for viva demo
+      operationId: triggerDailyReminder
+      security: [{ bearerAuth: [] }]
+      responses:
+        200:
+          description: Dispatched or executed directly
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+
+  /api/admin/trigger-job/monthly-report:
+    post:
+      tags: [Admin]
+      summary: Manually trigger Celery monthly report batch job for viva demo
+      operationId: triggerMonthlyReport
+      security: [{ bearerAuth: [] }]
+      responses:
+        200:
+          description: Dispatched or executed directly
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+
+  /api/examiner/dashboard:
+    get:
+      tags: [Examiner]
+      summary: Examiner metrics & assigned examination cards
+      operationId: getExaminerDashboard
+      security: [{ bearerAuth: [] }]
+      responses:
+        200:
+          description: Examiner dashboard data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  assigned_exams: { type: integer }
+                  total_slots: { type: integer }
+                  pending_evaluations: { type: integer }
+                  completed_evaluations: { type: integer }
+
+  /api/examiner/exams:
+    get:
+      tags: [Examiner]
+      summary: List all examinations assigned to the logged-in examiner
+      operationId: listAssignedExams
+      security: [{ bearerAuth: [] }]
+      responses:
+        200:
+          description: List of assigned examinations
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Examination' }
+
+  /api/examiner/slots:
+    get:
+      tags: [Examiner]
+      summary: List interview slots created by the logged-in examiner
+      operationId: listExaminerSlots
+      security: [{ bearerAuth: [] }]
+      responses:
+        200:
+          description: List of slots
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Slot' }
+    post:
+      tags: [Examiner]
+      summary: Create slot (permitted only during Slot Creation status)
+      operationId: createSlot
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [exam_id, date, start_time, end_time]
+              properties:
+                exam_id: { type: integer }
+                date: { type: string, format: date }
+                start_time: { type: string, example: "10:00" }
+                end_time: { type: string, example: "10:20" }
+                capacity: { type: integer, default: 1 }
+                meeting_link: { type: string }
+      responses:
+        201:
+          description: Slot created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  slot: { $ref: '#/components/schemas/Slot' }
+        400:
+          description: Exam is not in Slot Creation status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/examiner/slots/{slot_id}:
+    put:
+      tags: [Examiner]
+      summary: Update slot (only if unbooked)
+      operationId: updateSlot
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: slot_id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                date: { type: string }
+                start_time: { type: string }
+                end_time: { type: string }
+                capacity: { type: integer }
+                meeting_link: { type: string }
+      responses:
+        200:
+          description: Slot updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  slot: { $ref: '#/components/schemas/Slot' }
+        400:
+          description: Cannot edit booked slot
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    delete:
+      tags: [Examiner]
+      summary: Delete slot (only if unbooked)
+      operationId: deleteSlot
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: slot_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        200:
+          description: Slot deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        400:
+          description: Cannot delete booked slot
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/examiner/slots/{slot_id}/bookings:
+    get:
+      tags: [Examiner]
+      summary: View candidate roster for a specific slot
+      operationId: viewSlotBookings
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: slot_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        200:
+          description: Booked candidates list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Booking' }
+
+  /api/examiner/slots/{slot_id}/complete:
+    put:
+      tags: [Examiner]
+      summary: Mark slot and check examination completion
+      operationId: completeSlot
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: slot_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        200:
+          description: Slot completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+
+  /api/examiner/bookings/{booking_id}/evaluation:
+    get:
+      tags: [Examiner]
+      summary: Fetch rubrics and existing evaluation for grading
+      operationId: getBookingEvaluation
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: booking_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        200:
+          description: Rubrics and evaluation state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  booking: { $ref: '#/components/schemas/Booking' }
+                  rubrics: { type: array, items: { $ref: '#/components/schemas/Rubric' } }
+                  evaluation: { $ref: '#/components/schemas/Evaluation' }
+                  results_published: { type: boolean }
+    post:
+      tags: [Examiner]
+      summary: Submit rubric scores and qualitative remarks
+      operationId: submitBookingEvaluation
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: booking_id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scores, remarks]
+              properties:
+                scores:
+                  type: object
+                  additionalProperties: { type: number }
+                remarks: { type: string }
+      responses:
+        200:
+          description: Evaluation submitted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  evaluation: { $ref: '#/components/schemas/Evaluation' }
+        400:
+          description: Results published or marks out of range
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/student/profile:
+    get:
+      tags: [Student]
+      summary: Get student profile
+      operationId: getStudentProfile
+      security: [{ bearerAuth: [] }]
+      responses:
+        200:
+          description: Student profile details
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+    put:
+      tags: [Student]
+      summary: Update student profile details (phone, department)
+      operationId: updateStudentProfile
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                phone: { type: string }
+                department: { type: string }
+      responses:
+        200:
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  user: { $ref: '#/components/schemas/User' }
+
+  /api/student/dashboard:
+    get:
+      tags: [Student]
+      summary: Student dashboard summary
+      operationId: getStudentDashboard
+      security: [{ bearerAuth: [] }]
+      responses:
+        200:
+          description: Student metrics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  active_bookings: { type: integer }
+                  completed_exams: { type: integer }
+                  open_exams: { type: integer }
+
+  /api/student/exams:
+    get:
+      tags: [Student]
+      summary: Browse open examinations with available seats (cached)
+      operationId: listStudentExams
+      security: [{ bearerAuth: [] }]
+      responses:
+        200:
+          description: List of open examinations
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Examination' }
+
+  /api/student/exams/{exam_id}/slots:
+    get:
+      tags: [Student]
+      summary: List available interview slots for an open examination
+      operationId: listExamSlots
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: exam_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        200:
+          description: Available slots
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Slot' }
+
+  /api/student/bookings:
+    post:
+      tags: [Student]
+      summary: Book an interview slot (enforces single active booking per exam)
+      operationId: bookSlot
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slot_id]
+              properties:
+                slot_id: { type: integer }
+      responses:
+        201:
+          description: Slot booked successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  booking: { $ref: '#/components/schemas/Booking' }
+        400:
+          description: Already booked for this exam or slot full
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/student/bookings/{booking_id}/cancel:
+    put:
+      tags: [Student]
+      summary: Cancel booking and reclaim seat prior to deadline
+      operationId: cancelBooking
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: booking_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        200:
+          description: Booking cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        400:
+          description: Cancellation deadline passed or already completed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/student/history:
+    get:
+      tags: [Student]
+      summary: Student booking history, scores, and published remarks
+      operationId: getStudentHistory
+      security: [{ bearerAuth: [] }]
+      responses:
+        200:
+          description: Complete booking and result history
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Booking' }
+
+  /api/student/export:
+    post:
+      tags: [Student]
+      summary: Initiate asynchronous Celery CSV export
+      operationId: triggerExport
+      security: [{ bearerAuth: [] }]
+      responses:
+        200:
+          description: Export dispatched or executed directly
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task_id: { type: string }
+                  status: { type: string }
+                  message: { type: string }
+
+  /api/student/export/{task_id}:
+    get:
+      tags: [Student]
+      summary: Poll status of Celery export job
+      operationId: checkExportStatus
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        200:
+          description: Job status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [PENDING, SUCCESS, FAILED] }
+                  download_url: { type: string }
+
+  /api/student/export/download/{filename}:
+    get:
+      tags: [Student]
+      summary: Download generated CSV history export file
+      operationId: downloadExport
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        200:
+          description: CSV file attachment
+          content:
+            text/csv:
+              schema: { type: string, format: binary }
+        403:
+          description: Cannot access other students' files
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string, example: "An error occurred" }
+
+    User:
+      type: object
+      properties:
+        id: { type: integer }
+        email: { type: string, format: email }
+        full_name: { type: string }
+        role: { type: string, enum: [admin, examiner, student] }
+        phone: { type: string }
+        department: { type: string }
+        is_active: { type: boolean }
+        created_at: { type: string }
+
+    Course:
+      type: object
+      properties:
+        id: { type: integer }
+        code: { type: string, example: CS2001 }
+        name: { type: string }
+        description: { type: string }
+        status: { type: string, enum: [Active, Inactive] }
+
+    Examination:
+      type: object
+      properties:
+        id: { type: integer }
+        course_id: { type: integer }
+        course_code: { type: string }
+        course_name: { type: string }
+        name: { type: string }
+        exam_type: { type: string }
+        duration: { type: integer }
+        max_marks: { type: integer }
+        instructions: { type: string }
+        slot_creation_start: { type: string }
+        slot_creation_end: { type: string }
+        booking_start: { type: string }
+        booking_end: { type: string }
+        status: { type: string, enum: [Draft, Slot Creation, Booking Open, Closed, Completed] }
+        results_published: { type: boolean }
+
+    Rubric:
+      type: object
+      properties:
+        id: { type: integer }
+        exam_id: { type: integer }
+        criterion_name: { type: string }
+        max_marks: { type: integer }
+        weightage: { type: integer }
+        description: { type: string }
+
+    Slot:
+      type: object
+      properties:
+        id: { type: integer }
+        exam_id: { type: integer }
+        exam_name: { type: string }
+        examiner_id: { type: integer }
+        examiner_name: { type: string }
+        date: { type: string }
+        start_time: { type: string }
+        end_time: { type: string }
+        capacity: { type: integer }
+        available_seats: { type: integer }
+        status: { type: string, enum: [Available, Full, Cancelled, Completed] }
+        meeting_link: { type: string }
+
+    Booking:
+      type: object
+      properties:
+        id: { type: integer }
+        student_id: { type: integer }
+        student_name: { type: string }
+        student_email: { type: string }
+        slot_id: { type: integer }
+        slot_date: { type: string }
+        slot_start: { type: string }
+        slot_end: { type: string }
+        exam_id: { type: integer }
+        exam_name: { type: string }
+        examiner_name: { type: string }
+        booked_at: { type: string }
+        status: { type: string, enum: [Booked, Cancelled, Completed] }
+        evaluation: { $ref: '#/components/schemas/Evaluation' }
+
+    Evaluation:
+      type: object
+      properties:
+        id: { type: integer }
+        booking_id: { type: integer }
+        student_id: { type: integer }
+        student_name: { type: string }
+        examiner_id: { type: integer }
+        examiner_name: { type: string }
+        total_marks: { type: number }
+        remarks: { type: string }
+        evaluated_at: { type: string }
+        status: { type: string }
+        scores:
+          type: array
+          items:
+            type: object
+            properties:
+              criterion_name: { type: string }
+              max_marks: { type: integer }
+              marks: { type: number }

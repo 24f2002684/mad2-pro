@@ -1,29 +1,27 @@
 # Examination Management Portal V2 (EMP-V2)
 
-Examination Management Portal V2 (EMP-V2) is a full-stack, enterprise-grade educational examination coordination and evaluation web application built for the **IIT Madras BS Degree in Data Science and Applications** (Course: **Modern Application Development II - MAD-II**).
-
-The system manages the entire examination lifecycle from course and exam definition, rubric creation, examiner assignment, and slot scheduling, through student booking, rubric-based evaluation, result publication, asynchronous CSV reporting, Redis caching, and interactive Chart.js analytics.
+**Target Course**: Modern Application Development II (MAD-II) — IIT Madras BS Degree in Data Science and Applications  
+**Recommended Python Version**: **Python 3.10 to 3.14** *(Tested and verified on Python 3.14.3)*  
+**Specification & Build Artifacts**: OpenAPI 3.0: [`api.yaml`](api.yaml) | Packager: [`make_zip.py`](make_zip.py)
 
 ---
 
-## Architecture & Technology Stack
+## Project Overview
 
-### Backend
-- **Framework**: Python 3.14 / Flask (Application Factory pattern with Blueprints)
-- **Database / ORM**: SQLite (`emp_v2.db`) via Flask-SQLAlchemy
-- **Authentication & RBAC**: Flask-JWT-Extended (Role-Based Access Control: Admin, Examiner, Student)
-- **Async Task Queue**: Celery with Redis broker and result backend (`redis-py`)
-- **Caching**: Direct Redis caching with `X-Cache: HIT / MISS` telemetry
-- **Email Dispatch**: Standard library `smtplib` and `email.message` with failsafe fallback logging (`outbox.log`)
-- **Prohibited Libraries Strictly Excluded**: *Flask-RESTful, Marshmallow, Flask-Migrate, Flask-Security, Flask-Mail, Flask-Caching, Flask-CORS, requests, Pinia, Tailwind, jQuery, Docker.*
+Examination Management Portal V2 (EMP-V2) is an educational examination coordination and management system. It models the entire lifecycle of multi-format assessments (Viva, Practical, Project Demo, Assessment):
+- **Administrator**: Academic courses CRUD, examination timelines, rubrics configuration, examiner provisioning, student oversight & blocking, slot reassignment, exceptional rescheduling, results publication, and Chart.js analytics.
+- **Examiner**: Time slot scheduling with capacity limits during the designated `Slot Creation` phase, candidate roster inspection, multi-criteria rubric grading with qualitative remarks, and slot completion.
+- **Student**: Account self-registration, exam browsing, slot booking (with strict single-active booking enforcement per exam), cancellation before deadlines, published score reviews, and asynchronous CSV export.
 
-### Frontend
-- **Framework**: Vue 3 (Options API, global production build, zero bundler/Vite/webpack overhead)
-- **Routing**: Vue Router 4 (Hash mode: `#/route`)
-- **Styling**: Bootstrap 5.3 CSS + Minimal custom CSS overrides
-- **Visual Analytics**: Chart.js 4 (Bar, Doughnut, Line charts)
-- **PWA**: Web App Manifest (`manifest.json`) + Service Worker (`sw.js`) for offline shell caching and home-screen installability
-- **Template Engine**: Single Jinja2 entry point serving `templates/index.html`
+---
+
+## Tech Stack & Allowed Constraints
+
+- **Backend**: Python 3.14, Flask, Flask-SQLAlchemy (SQLite database), Flask-JWT-Extended, Celery, Redis (`redis-py`).
+- **Standard Library**: `os`, `sys`, `csv`, `datetime`, `re`, `json`, `smtplib`, `email.message`, `secrets`, `string`, `zipfile`.
+- **Frontend**: Vue 3 (Options API, global build, zero bundler/Vite/webpack), Vue Router 4 (hash mode), Bootstrap 5.3 CSS, Chart.js 4.
+- **PWA**: Web App Manifest (`manifest.json`) and Service Worker (`sw.js`) for offline shell caching and home-screen installability.
+- **Prohibited Stack Compliance**: Strictly excludes *Flask-RESTful, Marshmallow, Flask-Migrate, Flask-Security, Flask-Mail, Flask-Caching, Flask-CORS, requests, Pinia, Tailwind, jQuery, Docker.*
 
 ---
 
@@ -31,57 +29,64 @@ The system manages the entire examination lifecycle from course and exam definit
 
 ```text
 mad2-pro/
-├── README.md                          # Comprehensive documentation & viva guide
-├── requirements.txt                   # Frozen Python dependencies
-├── .gitignore                         # Excludes virtual environments, SQLite WAL, caches
-├── app.py                             # Flask application factory & blueprint registration
-├── config.py                          # Environment settings, JWT, Redis, and Mail configurations
+├── README.md                          # Documentation & viva walkthrough
+├── requirements.txt                   # Direct pinned dependencies (Flask, SQLAlchemy, JWT, Celery, Redis)
+├── .gitignore                         # Excludes venv, pycache, SQLite databases, logs, archives
+├── api.yaml                           # OpenAPI 3.0 specification (100% of 54 API endpoints documented)
+├── make_zip.py                        # Automated submission packager (standard library only)
+├── app.py                             # Flask application factory, database initialization, default admin seed
+├── config.py                          # Environment settings & dynamic BASE_DIR path resolution
 ├── extensions.py                      # SQLAlchemy and JWTManager singletons
 ├── models.py                          # Relational data schema (8 normalized tables)
 ├── helpers.py                         # RBAC @role_required, Redis cache wrappers, email sender
 ├── tasks.py                           # Celery app, periodic beat schedules, and async CSV export
 ├── seed_demo.py                       # Standalone demo data seeder for viva evaluation
-├── outbox.log                         # Email transmission audit log
-├── exports/                           # Destination folder for asynchronous Celery CSV exports
+├── exports/                           # Destination directory for generated CSV exports
+│   └── .gitkeep
 ├── templates/
+│   ├── .gitkeep
 │   └── index.html                     # Single Jinja2 entry point serving the Vue 3 SPA
 ├── static/
+│   ├── manifest.json                  # PWA metadata & display modes
+│   ├── sw.js                          # Service Worker for offline shell caching
 │   ├── css/
-│   │   └── style.css                  # Custom responsive overrides and transitions
+│   │   ├── .gitkeep
+│   │   └── style.css                  # Custom responsive overrides
 │   ├── img/
-│   │   ├── icon-192.png               # PWA app icon (192x192)
-│   │   └── icon-512.png               # PWA app icon (512x512)
-│   ├── vendor/                        # Vendored offline JS/CSS assets (Zero CDN dependence)
-│   │   ├── bootstrap.min.css
-│   │   ├── bootstrap.bundle.min.js
-│   │   ├── vue.global.prod.js
-│   │   ├── vue-router.global.prod.js
-│   │   └── chart.umd.min.js
+│   │   ├── icon-192.png               # PWA icon (192x192)
+│   │   └── icon-512.png               # PWA icon (512x512)
 │   ├── js/
 │   │   ├── api.js                     # Centralized Fetch API client with Bearer JWT
 │   │   ├── app.js                     # Vue Router setup, navigation guards, route mappings
 │   │   └── components/                # Modular Vue 3 Options API components
-│   │       ├── Navbar.js              # Role-aware navigation bar
-│   │       ├── Login.js               # JWT login screen with role redirection
-│   │       ├── Register.js            # Student registration screen
-│   │       ├── AdminDashboard.js      # Metrics, Chart.js charts, Celery job triggers
+│   │       ├── .gitkeep
+│   │       ├── Navbar.js              # Global navigation bar
+│   │       ├── Login.js               # Login component with role redirection
+│   │       ├── Register.js            # Student registration component
+│   │       ├── AdminDashboard.js      # Metrics & Chart.js visualizations (Bar, Doughnut, Line)
 │   │       ├── AdminCourses.js        # Course CRUD
 │   │       ├── AdminExams.js          # Exam lifecycle, timelines, rubrics CRUD, publishing
-│   │       ├── AdminExaminers.js      # Examiner provisioning, activation toggle, reset pass
-│   │       ├── AdminStudents.js       # Student directory, search, block/unblock toggle
-│   │       ├── AdminSlots.js          # Cross-examiner slot oversight & reassignment
-│   │       ├── AdminBookings.js       # Cross-student booking oversight & rescheduling
-│   │       ├── ExaminerDashboard.js   # Examiner metrics & assigned exam cards
-│   │       ├── ExaminerExams.js       # Examiner assigned exams overview
-│   │       ├── ExaminerSlots.js       # Slot creation & roster of booked candidates
-│   │       ├── ExaminerEvaluate.js    # Rubric scoring, total calculation, marks lock
-│   │       ├── StudentDashboard.js    # Candidate bookings summary & active notifications
-│   │       ├── StudentProfile.js      # Candidate profile view & department update
-│   │       ├── StudentExams.js        # Browse open exams & available slots booking
-│   │       └── StudentHistory.js      # Booking history, published grades, Celery CSV export
-│   ├── manifest.json                  # PWA metadata & display modes
-│   └── sw.js                          # Service Worker for offline shell caching
+│   │       ├── AdminExaminers.js      # Examiner provisioning
+│   │       ├── AdminStudents.js       # Student directory & block toggle
+│   │       ├── AdminSlots.js          # Slot oversight & reassignment
+│   │       ├── AdminBookings.js       # Booking oversight & rescheduling
+│   │       ├── ExaminerDashboard.js   # Examiner overview
+│   │       ├── ExaminerExams.js       # Examiner assigned exams
+│   │       ├── ExaminerSlots.js       # Slot creation & roster view
+│   │       ├── ExaminerEvaluate.js    # Rubric-based grading form
+│   │       ├── StudentDashboard.js    # Student home & notifications
+│   │       ├── StudentProfile.js      # Student profile management
+│   │       ├── StudentExams.js        # Exam browsing & slot booking
+│   │       └── StudentHistory.js      # Booking history & CSV export
+│   └── vendor/                        # Vendored offline JS/CSS assets (Zero external CDN)
+│       ├── .gitkeep
+│       ├── bootstrap.min.css
+│       ├── bootstrap.bundle.min.js
+│       ├── vue.global.prod.js
+│       ├── vue-router.global.prod.js
+│       └── chart.umd.min.js
 └── routes/
+    ├── .gitkeep
     ├── auth.py                        # /api/auth/* (register, login, me)
     ├── admin.py                       # /api/admin/* (courses, exams, rubrics, examiners, students, slots, analytics)
     ├── examiner.py                    # /api/examiner/* (assigned exams, slots CRUD, evaluation)
@@ -90,229 +95,137 @@ mad2-pro/
 
 ---
 
-## Role-Based Feature Highlights
+## Setup & Run from a Fresh Extract
 
-### 1. Administrator (`admin@emp.com`)
-- **Dashboard & Analytics**: Real-time KPI counters + 3 dynamic Chart.js visualizations (Candidate Participation Bar Chart, Pass/Fail Doughnut Chart, Monthly Booking Trends Line Chart).
-- **Course CRUD**: Create, edit, search, and delete academic courses.
-- **Examination Lifecycle**: Transition exams across strict states: `Draft` $\rightarrow$ `Slot Creation` $\rightarrow$ `Booking Open` $\rightarrow$ `Closed` $\rightarrow$ `Completed`.
-- **Rubrics Management**: Configure granular criteria with maximum marks and weightages per examination.
-- **Examiner Provisioning**: Add examiners; automatically generates secure 8-character temporary passwords and dispatches notification emails; toggle active status.
-- **Student Directory**: Search students; view booking history; toggle block/active status to prevent restricted students from booking.
-- **Exceptional Rescheduling**: Reassign a student's booking to another available slot of the same exam without losing records.
-- **Examiner Reassignment**: Reassign an existing slot and its booked candidates to another assigned examiner.
-- **Results Publication**: One-click results publishing locks all evaluations from further tampering and reveals marks and feedback to students.
-- **Celery Manual Triggers**: Directly dispatch background batch jobs from the UI for viva evaluation.
-
-### 2. Examiner (`prof.sharma@emp.com`, `prof.anand@emp.com`)
-- **Dashboard**: Track assigned examinations, upcoming scheduled slots, and pending evaluations.
-- **Slot Management**: Create interview time slots with custom duration and capacity **strictly during the `Slot Creation` phase**. Update or delete unbooked slots.
-- **Roster & Candidates**: View real-time booked students per slot with student names, emails, and phone numbers.
-- **Rubric-Based Evaluation**: Grade students on a rubric-by-rubric breakdown, add qualitative remarks, auto-calculate totals, and mark slots as completed (auto-completing the examination when all slots finish).
-
-### 3. Student (`student1@study.iitm.ac.in`, etc.)
-- **Profile Management**: View account details and update phone/department information.
-- **Browse Open Examinations**: View exams in `Booking Open` state with real-time seat availability.
-- **Slot Booking**: Book an interview slot (strictly enforces **one active booking per examination**; atomic seat decrement).
-- **Cancellation**: Cancel bookings prior to the deadline, atomically reclaiming the seat for other peers.
-- **Results & History**: Review past bookings; view rubric score breakdowns and examiner feedback once results are published.
-- **Asynchronous CSV Export**: Request full booking and evaluation history export via a background Celery task; poll status and download the generated CSV.
-
----
-
-## Setup & Execution Guide
-
-### 1. Environment Preparation
+### Windows (PowerShell)
 ```powershell
-# Open terminal in project root
-cd "C:\Users\S.M.Suhail Akthar\Desktop\Documents\IITM BS Degree\Diploma Level Stuffs\Diploma in Programming\MAD2-Pro\CodeBase"
+# 1. Navigate to the extracted project folder
+cd mad2-pro
 
-# Create and activate virtual environment
+# 2. Create and activate a fresh virtual environment
 py -m venv venv
 .\venv\Scripts\Activate.ps1
 
-# Install dependencies
+# 3. Install direct dependencies
 pip install -r requirements.txt
+
+# 4. (Optional) Populate realistic viva demonstration data
+python seed_demo.py
+
+# 5. Start the Flask server
+python app.py
 ```
 
-### 2. Start Redis Server
-Redis is required for API caching and Celery queues. Ensure Redis is listening on port `6379`.
-- **Windows Native / Memurai**: Launch `memurai.exe` or `redis-server.exe`.
+### macOS / Linux (Bash)
+```bash
+# 1. Navigate to the extracted project folder
+cd mad2-pro
+
+# 2. Create and activate a fresh virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# 3. Install direct dependencies
+pip install -r requirements.txt
+
+# 4. (Optional) Populate realistic viva demonstration data
+python3 seed_demo.py
+
+# 5. Start the Flask server
+python3 app.py
+```
+
+Access the application in your browser at: **`http://localhost:5000`**
+
+---
+
+## Starting Redis & Celery
+
+### 1. Redis Server
+Redis is required for background task queues and `X-Cache` telemetry.
+- **Windows (Memurai / Redis native)**: Start `redis-server.exe` (port 6379).
 - **WSL (Ubuntu)**: `wsl sudo service redis-server start`
 - **Docker**: `docker run -d -p 6379:6379 --name emp-redis redis:alpine`
+- **macOS (Homebrew)**: `brew services start redis`
 
-### 3. Seed Demo Data for Viva
-Populate the database with pre-configured courses, examinations across all lifecycle states, examiners, students, bookings, and evaluations:
-```powershell
-.\venv\Scripts\python.exe seed_demo.py
-```
+*(Note: If Redis is offline, the core web portal continues operating smoothly; cache requests gracefully degrade to dynamic queries with `X-Cache: MISS`).*
 
-### 4. Run Flask Application
-```powershell
-.\venv\Scripts\python.exe app.py
-```
-Open your browser and navigate to: `http://localhost:5000`
+### 2. Celery Worker
+Open a new terminal, activate the venv, and run:
+- **Windows**: (Must include `-P solo` because Windows does not support prefork):
+  ```powershell
+  celery -A tasks.celery worker -l info -P solo
+  ```
+- **macOS / Linux**:
+  ```bash
+  celery -A tasks.celery worker -l info
+  ```
 
-### 5. Run Celery Worker (Windows)
-> **Crucial for Windows**: Always supply `-P solo` because the default prefork process pool is not supported on Windows.
-```powershell
-.\venv\Scripts\celery.exe -A tasks.celery worker -l info -P solo
-```
-
-### 6. Run Celery Beat Scheduler (Periodic Tasks)
-```powershell
-.\venv\Scripts\celery.exe -A tasks.celery beat -l info
+### 3. Celery Beat (Periodic Scheduler)
+Open another terminal, activate the venv, and run:
+```bash
+celery -A tasks.celery beat -l info
 ```
 
 ---
 
-## Pre-Seeded Demonstration Credentials
+## Default Credentials & Pre-Seeded Accounts
 
 | Role | Email | Password | Details |
 |---|---|---|---|
-| **Admin** | `admin@emp.com` | `Admin@123` | System Administrator |
-| **Examiner 1** | `prof.sharma@emp.com` | `Examiner@123` | Dr. Ramesh Sharma (Computer Science) |
-| **Examiner 2** | `prof.anand@emp.com` | `Examiner@123` | Dr. Kavita Anand (Data Science) |
-| **Student 1** | `student1@study.iitm.ac.in` | `Student@123` | Aarav Kumar (Evaluated: 93/100, Passed) |
-| **Student 2** | `student2@study.iitm.ac.in` | `Student@123` | Bhavna Patel (Evaluated: 32/100, Needs Improvement) |
-| **Student 3** | `student3@study.iitm.ac.in` | `Student@123` | Chetan Singh (Active Booking in Python Viva) |
+| **Admin (Default)** | `admin@emp.com` | `Admin@123` | System Administrator (Auto-created on first run) |
+| **Examiner 1** | `prof.sharma@emp.com` | `Examiner@123` | Dr. Ramesh Sharma (Computer Science) *(Seeded)* |
+| **Examiner 2** | `prof.anand@emp.com` | `Examiner@123` | Dr. Kavita Anand (Data Science) *(Seeded)* |
+| **Student 1** | `student1@study.iitm.ac.in` | `Student@123` | Aarav Kumar (Passed 93/100, Results Published) *(Seeded)* |
+| **Student 2** | `student2@study.iitm.ac.in` | `Student@123` | Bhavna Patel (32/100, Results Published) *(Seeded)* |
+| **Student 3** | `student3@study.iitm.ac.in` | `Student@123` | Chetan Singh (Active Booking in Python Viva) *(Seeded)* |
 
 ---
 
-## Background Jobs & Caching Architecture
+## How to Trigger Celery Jobs Manually for Viva
 
-### Redis Caching with `X-Cache` Telemetry
-Endpoints utilize Redis key-value caching with automatic cache invalidation upon mutations:
-- `GET /api/admin/exams` $\rightarrow$ Cache key: `admin:exams` (Invalidated on exam CRUD / status changes)
-- `GET /api/student/exams` $\rightarrow$ Cache key: `student:exams` (Invalidated on bookings / cancellations)
-- `GET /api/admin/analytics` $\rightarrow$ Cache key: `admin:analytics` (60s TTL)
-- Inspect cache telemetry: `curl.exe -i http://localhost:5000/api/admin/analytics -H "Authorization: Bearer <TOKEN>"` returns `X-Cache: HIT` or `X-Cache: MISS`.
+### 1. Daily Slot Reminder Job (`daily_reminder_job`)
+- **Via Admin UI**: Log in as `admin@emp.com`, open Dashboard, click **Trigger Daily Slot Reminders**.
+- **Via Terminal / Python**:
+  ```powershell
+  python -c "from tasks import daily_reminder_job; print(daily_reminder_job())"
+  ```
+- **Via cURL**:
+  ```powershell
+  curl.exe -X POST http://localhost:5000/api/admin/trigger-job/daily-reminder -H "Authorization: Bearer <ADMIN_JWT_TOKEN>"
+  ```
 
-### Periodic Celery Tasks
-1. **Daily Slot Reminder (`daily_reminder_job`)**:
-   - Scheduled every morning at **08:00 IST**.
-   - Queries all bookings with slots scheduled for tomorrow and emails candidates their exam schedule and meeting link.
-2. **Monthly Performance Summary (`monthly_report_job`)**:
-   - Scheduled on the **1st of every month at 09:00 IST**.
-   - Compiles an HTML report detailing total courses, exams, active bookings, completed evaluations, and pass rates, and emails it to `admin@emp.com`.
-3. **User-Triggered CSV Export (`export_student_history_job`)**:
-   - Asynchronously generates an official CSV file in `exports/` containing: `Student ID, Examination Name, Course, Examination Date, Examiner, Marks Obtained, Booking Status`.
-   - Polled via `/api/student/export/<task_id>` and downloaded via authenticated download endpoint.
+### 2. Monthly Summary Report Job (`monthly_report_job`)
+- **Via Admin UI**: On Admin Dashboard, click **Trigger Monthly Activity Report**.
+- **Via Terminal / Python**:
+  ```powershell
+  python -c "from tasks import monthly_report_job; print(monthly_report_job())"
+  ```
+- **Via cURL**:
+  ```powershell
+  curl.exe -X POST http://localhost:5000/api/admin/trigger-job/monthly-report -H "Authorization: Bearer <ADMIN_JWT_TOKEN>"
+  ```
 
----
-
-## Step-by-Step Viva Demonstration Walkthrough
-
-Follow this scripted walkthrough during your viva to highlight every rubric requirement smoothly:
-
-### Step 1: Admin Workflow & Chart.js Analytics
-1. Log in as `admin@emp.com` / `Admin@123`.
-2. Inspect the **Admin Dashboard**:
-   - Note the real-time KPI counter cards.
-   - Show the **Chart.js Visualizations**: Bar chart (Candidate Bookings per Examination), Doughnut chart (Pass vs Fail), and Line chart (Monthly Booking Volume Trends).
-3. Navigate to **Exams & Rubrics** (`#/admin/exams`):
-   - Review examinations in different statuses: `Draft`, `Slot Creation`, `Booking Open`, `Closed`, `Completed`.
-   - Click **Manage Rubrics** on *MAD-II Capstone Project Viva* to show criteria max marks and weightages.
-   - Show the **Publish Results** badge.
-4. Navigate to **Examiners** (`#/admin/examiners`):
-   - Show the provisioning interface. Demonstrate creating an examiner and show the password dispatch logged in `outbox.log`.
-5. Demonstrate **Exceptional Actions**:
-   - Navigate to **Bookings & Reschedule** (`#/admin/bookings`). Show how an admin can reschedule any candidate's booking to another slot.
-   - Navigate to **Slots Oversight** (`#/admin/slots`). Show how an admin can reassign a slot to another examiner.
-
-### Step 2: Examiner Workflow & Rubric Evaluation
-1. Log in as `prof.sharma@emp.com` / `Examiner@123`.
-2. View the **Examiner Dashboard** and assigned exams.
-3. Open **Slot Management** (`#/examiner/slots`):
-   - For an exam in `Slot Creation` status (*Shell Scripting Lab Demo*), show the **Create Slot** form.
-   - For exams not in `Slot Creation`, explain how the UI disables slot addition to enforce the timeline rule.
-4. Click **View Booked Candidates**:
-   - Click **Evaluate** on a booked candidate.
-   - Show the **Rubric Scoring Form**: Enter scores per criterion, write qualitative remarks, and click **Submit Evaluation**.
-   - Show how the total marks are computed and how the slot status updates to `Completed`.
-
-### Step 3: Student Workflow & CSV Export
-1. Log in as `student1@study.iitm.ac.in` / `Student@123`.
-2. Navigate to **History** (`#/student/history`):
-   - Show the completed evaluation with published marks (93/100) and examiner remarks.
-3. Click the **Export History (CSV)** button:
-   - Celery worker receives the job asynchronously.
-   - The UI polls and presents a **Download CSV** button upon completion.
-   - Download and open the CSV to show the required columns.
-4. Log in as `student3@study.iitm.ac.in` / `Student@123`:
-   - Navigate to **Available Exams** (`#/student/exams`).
-   - Show active booking detection (cannot double-book the same exam).
-   - Cancel the booking and show the available seat count increment atomically.
-
-### Step 4: Celery Batch Jobs Manual Trigger
-1. Return to the **Admin Dashboard**.
-2. Under **Celery Batch Jobs (Viva Demo)**, click **Trigger Daily Slot Reminders** and **Trigger Monthly Activity Report**.
-3. Point out the Celery worker terminal logs showing the task received and succeeded, and open `outbox.log` to demonstrate the email dispatch.
-
-### Step 5: Caching & PWA Verification
-1. Open Chrome DevTools $\rightarrow$ Network tab.
-2. Request `/api/admin/analytics`. Show the response header `X-Cache: HIT` on subsequent reloads.
-3. Open Chrome DevTools $\rightarrow$ Application tab:
-   - Show **Manifest**: Name, icons (192, 512), theme color `#0d6efd`, display `standalone`.
-   - Show **Service Workers**: `sw.js` active and running.
-   - Click the browser install icon in the URL bar to demonstrate PWA desktop/mobile installability.
+### 3. Student Async CSV Export (`export_student_history_job`)
+1. Log in as a student (`student1@study.iitm.ac.in` / `Student@123`).
+2. Navigate to **History** (`#/student/history`).
+3. Click **Export History (CSV)**.
+4. The client polls the Celery task ID and provides a green **Download CSV** link once complete.
+5. Generated CSVs contain: `Student ID, Examination Name, Course, Examination Date, Examiner, Marks Obtained, Booking Status`.
 
 ---
 
-## Complete API Endpoint Reference
+## Automated Packaging Utility (`make_zip.py`)
 
-| Method | Endpoint | Role | Description |
-|---|---|---|---|
-| `POST` | `/api/auth/register` | Public | Student account registration |
-| `POST` | `/api/auth/login` | Public | JWT login with role redirection |
-| `GET` | `/api/auth/me` | Authenticated | Current user profile |
-| `GET` | `/api/admin/dashboard` | Admin | Summary counts |
-| `GET` | `/api/admin/analytics` | Admin | Aggregated Chart.js dataset with Redis caching |
-| `GET` | `/api/admin/courses` | Admin | List all courses with optional `?q=` search |
-| `POST` | `/api/admin/courses` | Admin | Create a course |
-| `PUT` | `/api/admin/courses/<id>` | Admin | Update a course |
-| `DELETE` | `/api/admin/courses/<id>` | Admin | Delete a course |
-| `GET` | `/api/admin/exams` | Admin | List examinations with Redis caching |
-| `POST` | `/api/admin/exams` | Admin | Create an examination |
-| `PUT` | `/api/admin/exams/<id>` | Admin | Update examination details |
-| `POST` | `/api/admin/exams/<id>/status` | Admin | Advance examination lifecycle status |
-| `POST` | `/api/admin/exams/<id>/publish-results`| Admin | Publish results and lock evaluations |
-| `GET` | `/api/admin/exams/<id>/rubrics` | Admin | List rubrics for an exam |
-| `POST` | `/api/admin/exams/<id>/rubrics` | Admin | Add rubric criterion |
-| `PUT` | `/api/admin/rubrics/<id>` | Admin | Update rubric criterion |
-| `DELETE` | `/api/admin/rubrics/<id>` | Admin | Delete rubric criterion |
-| `GET` | `/api/admin/examiners` | Admin | List examiners |
-| `POST` | `/api/admin/examiners` | Admin | Provision new examiner (auto password) |
-| `POST` | `/api/admin/examiners/<id>/toggle-active` | Admin | Toggle examiner approval status |
-| `POST` | `/api/admin/examiners/<id>/reset-password` | Admin | Reset examiner password & email |
-| `GET` | `/api/admin/students` | Admin | Student directory with `?q=` filter |
-| `POST` | `/api/admin/students/<id>/toggle-block` | Admin | Block/unblock student |
-| `GET` | `/api/admin/slots` | Admin | Slot oversight across all examiners |
-| `POST` | `/api/admin/slots/<id>/reassign-examiner`| Admin | Reassign slot to another examiner |
-| `GET` | `/api/admin/bookings` | Admin | All student bookings |
-| `POST` | `/api/admin/bookings/<id>/reschedule` | Admin | Reschedule student booking to another slot |
-| `POST` | `/api/admin/trigger-job/daily-reminder` | Admin | Manually trigger Celery reminder job |
-| `POST` | `/api/admin/trigger-job/monthly-report` | Admin | Manually trigger Celery report job |
-| `GET` | `/api/examiner/dashboard` | Examiner | Examiner metrics & assigned exams |
-| `GET` | `/api/examiner/exams` | Examiner | Examiner assigned exams |
-| `GET` | `/api/examiner/slots` | Examiner | List examiner slots |
-| `POST` | `/api/examiner/slots` | Examiner | Create slot (only during `Slot Creation`) |
-| `PUT` | `/api/examiner/slots/<id>` | Examiner | Update unbooked slot |
-| `DELETE` | `/api/examiner/slots/<id>` | Examiner | Delete unbooked slot |
-| `GET` | `/api/examiner/slots/<id>/bookings` | Examiner | Candidate roster for a slot |
-| `GET` | `/api/examiner/bookings/<id>/rubrics` | Examiner | Fetch rubrics & existing score |
-| `POST` | `/api/examiner/bookings/<id>/evaluate` | Examiner | Submit rubric marks & remarks |
-| `POST` | `/api/examiner/slots/<id>/complete` | Examiner | Mark slot and exam as completed |
-| `GET` | `/api/student/profile` | Student | Candidate profile |
-| `PUT` | `/api/student/profile` | Student | Update candidate profile |
-| `GET` | `/api/student/exams` | Student | Browse open exams & available slots (Cached) |
-| `POST` | `/api/student/book` | Student | Book slot (single active per exam check) |
-| `POST` | `/api/student/bookings/<id>/cancel` | Student | Cancel booking & reclaim seat |
-| `GET` | `/api/student/history` | Student | Booking history, scores & remarks |
-| `POST` | `/api/student/export` | Student | Initiate Celery async CSV export |
-| `GET` | `/api/student/export/<task_id>` | Student | Poll Celery task progress |
-| `GET` | `/api/student/export/download/<task_id>`| Student | Download generated CSV file |
+To generate the clean submission archive outside the repository:
+```powershell
+python make_zip.py
+```
+This utility automatically excludes virtual environments, git metadata, SQLite database files, logs, and compiled bytecode, outputting `../mad2-pro_submission.zip` containing the project rooted in a single `mad2-pro/` folder.
 
 ---
 
-*Developed for the IIT Madras BS Degree Modern Application Development II (MAD-II) Course.*
+## OpenAPI 3.0 Specification (`api.yaml`)
+
+The complete OpenAPI 3.0 document is located in the root directory: [`api.yaml`](api.yaml).  
+It documents 100% of the 54 REST API endpoints with request bodies, query/path parameters, JWT `bearerAuth` security schemes, and standardized responses.
