@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Examination Management Portal V2 (EMP-V2)</title>
+    <!-- PWA Manifest & Meta Tags -->
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#0d6efd">
+    <link rel="apple-touch-icon" href="/static/img/icon-192.png">
     <!-- Bootstrap 5 CSS -->
     <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
     <!-- Custom Styles -->
@@ -53,5 +57,16 @@
 
     <!-- Main Vue App & Router Entry Point -->
     <script src="/static/js/app.js"></script>
+
+    <!-- PWA Service Worker Registration -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/static/sw.js')
+                    .then(() => console.log('[PWA] Service Worker registered successfully'))
+                    .catch((err) => console.warn('[PWA] Service Worker registration failed:', err));
+            });
+        }
+    </script>
 </body>
 </html>

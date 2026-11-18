@@ -1,11 +1,12 @@
 /* static/css/style.css */
-/* Minimal styling additions for EMP-V2 */
+/* Responsive styling, PWA enhancements, and micro-interactions for EMP-V2 */
 
 body {
     background-color: #f8f9fa;
     min-height: 100vh;
     display: flex;
     flex-direction: column;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
 main {
@@ -13,24 +14,62 @@ main {
 }
 
 .card {
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+    border-radius: 10px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+    transition: transform 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
 }
 
 .table th {
     background-color: #f1f3f5;
     font-weight: 600;
+    white-space: nowrap;
 }
 
 .badge {
     font-size: 0.85rem;
-    padding: 0.35em 0.65em;
+    padding: 0.38em 0.7em;
+    font-weight: 500;
 }
 
 .nav-link.active {
     font-weight: 600;
+    border-bottom: 2px solid #ffffff;
 }
 
 .cursor-pointer {
     cursor: pointer;
+}
+
+/* Responsive Table Container */
+.table-responsive {
+    border-radius: 8px;
+    overflow-x: auto;
+}
+
+/* Alert Transitions */
+.alert {
+    border-radius: 8px;
+    animation: fadeIn 0.25s ease-in;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Mobile Optimizations */
+@media (max-width: 768px) {
+    .container {
+        padding-left: 12px;
+        padding-right: 12px;
+    }
+
+    .btn-group-sm > .btn, .btn-sm {
+        padding: 0.25rem 0.4rem;
+        font-size: 0.75rem;
+    }
+
+    .fs-3 {
+        font-size: 1.5rem !important;
+    }
 }
