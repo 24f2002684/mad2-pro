@@ -356,3 +356,68 @@ def list_all_bookings():
     if q:
         query = query.filter((User.full_name.ilike(f"%{q}%")) | (User.email.ilike(f"%{q}%")))
     return jsonify([b.to_dict() for b in query.order_by(Booking.booked_at.desc()).all()]), 200
+
+# --- ADMIN EXCEPTIONAL ACTIONS ---
+
+@admin_bp.route("/exams/<int:exam_id>/publish", methods=["POST"])
+@role_required("admin")
+def publish_results(exam_id):
+    # Publishes examination scores if Closed/Completed and all candidates evaluated
+    exam = Examination.query.get_or_404(exam_id)
+    if exam.status not in ["Closed", "Completed"]:
+        return jsonify({"message": f"Results can only be published when exam is Closed or Completed (current: {exam.status})"}), 400
+
+    active_bookings = [b for s in exam.slots for b in s.bookings if b.status != "Cancelled"]
+    unevaluated = [b for b in active_bookings if not b.evaluation]
+    if unevaluated:
+        return jsonify({"message": f"Cannot publish results: {len(unevaluated)} candidate evaluations pending"}), 400
+
+    exam.results_published = True
+    db.session.commit()
+    return jsonify({"message": "Examination results published successfully", "exam": exam.to_dict()}), 200
+
+@admin_bp.route("/slots/<int:slot_id>/examiner", methods=["PUT"])
+@role_required("admin")
+def change_slot_examiner(slot_id):
+    # Exceptional action: Reassigns an examination slot to another faculty examiner
+    slot = Slot.query.get_or_404(slot_id)
+    data = request.get_json() or {}
+    new_examiner_id = data.get("examiner_id")
+    examiner = User.query.filter_by(id=new_examiner_id, role="examiner").first_or_404()
+
+    # Automatically map examiner to exam if not already assigned
+    if not ExamExaminer.query.filter_by(exam_id=slot.exam_id, examiner_id=examiner.id).first():
+        db.session.add(ExamExaminer(exam_id=slot.exam_id, examiner_id=examiner.id))
+
+    slot.examiner_id = examiner.id
+    db.session.commit()
+    return jsonify({"message": f"Slot reassigned to {examiner.full_name}", "slot": slot.to_dict()}), 200
+
+@admin_bp.route("/bookings/<int:booking_id>/reschedule", methods=["PUT"])
+@role_required("admin")
+def reschedule_booking(booking_id):
+    # Exceptional action: Moves candidate booking to another slot of the same exam with open seats
+    booking = Booking.query.get_or_404(booking_id)
+    data = request.get_json() or {}
+    new_slot_id = data.get("new_slot_id")
+    new_slot = Slot.query.get_or_404(new_slot_id)
+    old_slot = booking.slot
+
+    if old_slot.exam_id != new_slot.exam_id:
+        return jsonify({"message": "Cannot reschedule booking to a slot from a different examination"}), 400
+
+    if new_slot.available_seats <= 0:
+        return jsonify({"message": "Selected destination slot has no available seats"}), 409
+
+    # Rebalance seats between slots
+    old_slot.available_seats += 1
+    if old_slot.status == "Full":
+        old_slot.status = "Available"
+
+    new_slot.available_seats -= 1
+    if new_slot.available_seats == 0:
+        new_slot.status = "Full"
+
+    booking.slot_id = new_slot.id
+    db.session.commit()
+    return jsonify({"message": "Booking rescheduled successfully", "booking": booking.to_dict()}), 200

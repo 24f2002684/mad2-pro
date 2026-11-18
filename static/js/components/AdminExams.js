@@ -158,6 +158,18 @@ const AdminExams = {
             } catch (err) {
                 this.errorMessage = err.message || "Failed to delete examination";
             }
+        },
+        async publishResults(exam) {
+            if (!confirm(`Publish final results for ${exam.name}? Once published, evaluations are locked.`)) return;
+            this.errorMessage = "";
+            this.successMessage = "";
+            try {
+                const res = await window.API.post(`/api/admin/exams/${exam.id}/publish`);
+                this.successMessage = res.message || "Results published successfully!";
+                this.fetchExams();
+            } catch (err) {
+                this.errorMessage = err.message || "Failed to publish results";
+            }
         }
     },
     template: `
@@ -353,6 +365,9 @@ const AdminExams = {
                                     <button class="btn btn-outline-primary" @click="changeStatus(e, 'Booking Open')">Re-Open</button>
                                     <button class="btn btn-success" @click="changeStatus(e, 'Completed')">Complete</button>
                                 </div>
+
+                                <button class="btn btn-sm btn-success me-1" @click="publishResults(e)" v-if="(e.status === 'Closed' || e.status === 'Completed') && !e.results_published">Publish Results</button>
+                                <span class="badge bg-success me-1" v-if="e.results_published">Published</span>
 
                                 <button class="btn btn-sm btn-outline-info me-1" @click="openRubrics(e)">Rubrics</button>
                                 <button class="btn btn-sm btn-outline-success me-1" @click="openExaminers(e)">Examiners</button>

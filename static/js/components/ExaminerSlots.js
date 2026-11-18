@@ -132,6 +132,18 @@ const ExaminerSlots = {
             } catch (err) {
                 this.errorMessage = err.message || "Failed to load booked students";
             }
+        },
+        async completeSlot(slot) {
+            if (!confirm(`Mark slot #${slot.id} as Completed? This requires all candidates to be evaluated.`)) return;
+            this.errorMessage = "";
+            this.successMessage = "";
+            try {
+                const res = await window.API.put(`/api/examiner/slots/${slot.id}/complete`);
+                this.successMessage = res.message || "Slot marked as Completed";
+                this.fetchSlots();
+            } catch (err) {
+                this.errorMessage = err.message || "Failed to complete slot";
+            }
         }
     },
     template: `
@@ -224,10 +236,11 @@ const ExaminerSlots = {
                             <th>Booked At</th>
                             <th>Status</th>
                             <th>Evaluation</th>
+                            <th class="text-end">Action</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-if="bookedStudents.length === 0"><td colspan="5" class="text-center py-3 text-muted">No students booked in this slot yet</td></tr>
+                        <tr v-if="bookedStudents.length === 0"><td colspan="6" class="text-center py-3 text-muted">No students booked in this slot yet</td></tr>
                         <tr v-for="b in bookedStudents" :key="b.id">
                             <td class="fw-bold">{{ b.student_name }}</td>
                             <td>{{ b.student_email }}</td>
@@ -237,6 +250,11 @@ const ExaminerSlots = {
                                 <span class="badge" :class="b.evaluated ? 'bg-success' : 'bg-warning text-dark'">
                                     {{ b.evaluated ? ('Evaluated (' + b.evaluation_marks + ' pts)') : 'Pending' }}
                                 </span>
+                            </td>
+                            <td class="text-end">
+                                <router-link :to="'/examiner/evaluate/' + b.id" class="btn btn-sm btn-primary">
+                                    {{ b.evaluated ? 'Re-Evaluate' : 'Evaluate' }}
+                                </router-link>
                             </td>
                         </tr>
                     </tbody>
@@ -282,6 +300,7 @@ const ExaminerSlots = {
                             </td>
                             <td class="text-end">
                                 <button class="btn btn-sm btn-outline-info me-1" @click="viewBookings(s)">Candidates</button>
+                                <button class="btn btn-sm btn-outline-success me-1" @click="completeSlot(s)" v-if="s.status !== 'Completed' && s.bookings_count > 0">Complete</button>
                                 <button class="btn btn-sm btn-outline-primary me-1" @click="openEditForm(s)" :disabled="s.bookings_count > 0">Edit</button>
                                 <button class="btn btn-sm btn-outline-danger" @click="deleteSlot(s.id)" :disabled="s.bookings_count > 0">Delete</button>
                             </td>

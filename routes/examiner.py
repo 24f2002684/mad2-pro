@@ -4,7 +4,7 @@
 
 from flask import Blueprint, request, jsonify, g
 from extensions import db
-from models import Examination, Slot, Booking, ExamExaminer
+from models import Examination, Slot, Booking, ExamExaminer, Rubric, Evaluation, EvaluationScore
 from helpers import role_required, get_current_user
 
 examiner_bp = Blueprint("examiner", __name__, url_prefix="/api/examiner")
@@ -177,3 +177,110 @@ def view_slot_bookings(slot_id):
         d["evaluation_marks"] = b.evaluation.total_marks if b.evaluation else None
         result.append(d)
     return jsonify(result), 200
+
+@examiner_bp.route("/slots/<int:slot_id>/complete", methods=["PUT"])
+@role_required("examiner")
+def complete_slot(slot_id):
+    # Marks a slot completed if all candidates evaluated, and auto-completes exam if Closed
+    user = get_current_user()
+    slot = Slot.query.get_or_404(slot_id)
+    if slot.examiner_id != user.id:
+        return jsonify({"message": "Forbidden: You do not own this slot"}), 403
+
+    active_bookings = [b for b in slot.bookings if b.status != "Cancelled"]
+    unevaluated = [b for b in active_bookings if not b.evaluation]
+    if unevaluated:
+        return jsonify({"message": f"Cannot complete slot: {len(unevaluated)} candidates still need evaluation"}), 400
+
+    slot.status = "Completed"
+    exam = slot.examination
+    if exam.status == "Closed":
+        active_slots = [s for s in exam.slots if s.status != "Cancelled"]
+        if all(s.status == "Completed" for s in active_slots):
+            exam.status = "Completed"
+
+    db.session.commit()
+    return jsonify({"message": "Slot marked as Completed", "slot": slot.to_dict(), "exam_status": exam.status}), 200
+
+@examiner_bp.route("/bookings/<int:booking_id>/evaluation", methods=["GET"])
+@role_required("examiner")
+def get_booking_evaluation(booking_id):
+    # Fetches candidate evaluation details and rubrics
+    user = get_current_user()
+    booking = Booking.query.get_or_404(booking_id)
+    if booking.slot.examiner_id != user.id:
+        return jsonify({"message": "Forbidden: You do not own this slot"}), 403
+
+    rubrics = Rubric.query.filter_by(exam_id=booking.slot.exam_id).all()
+    evaluation = booking.evaluation.to_dict() if booking.evaluation else None
+    return jsonify({
+        "booking": booking.to_dict(),
+        "exam_max_marks": booking.slot.examination.max_marks,
+        "results_published": booking.slot.examination.results_published,
+        "rubrics": [r.to_dict() for r in rubrics],
+        "evaluation": evaluation
+    }), 200
+
+@examiner_bp.route("/bookings/<int:booking_id>/evaluation", methods=["POST"])
+@role_required("examiner")
+def submit_booking_evaluation(booking_id):
+    # Submits or updates rubric scores and remarks for candidate evaluation
+    user = get_current_user()
+    booking = Booking.query.get_or_404(booking_id)
+    if booking.slot.examiner_id != user.id:
+        return jsonify({"message": "Forbidden: You do not own this slot"}), 403
+
+    if booking.slot.examination.results_published:
+        return jsonify({"message": "Cannot edit evaluation once results are published"}), 400
+
+    data = request.get_json() or {}
+    remarks = data.get("remarks", "").strip()
+    scores_data = data.get("scores", [])
+
+    if not remarks:
+        return jsonify({"message": "Evaluation remarks are required"}), 400
+    if not scores_data:
+        return jsonify({"message": "Scores for rubrics are required"}), 400
+
+    rubrics_dict = {r.id: r for r in Rubric.query.filter_by(exam_id=booking.slot.exam_id).all()}
+    total = 0.0
+
+    # Validate marks
+    for s in scores_data:
+        rid = s.get("rubric_id")
+        marks = float(s.get("marks", 0))
+        if rid not in rubrics_dict:
+            return jsonify({"message": f"Invalid rubric ID {rid}"}), 400
+        rubric = rubrics_dict[rid]
+        if marks < 0 or marks > rubric.max_marks:
+            return jsonify({"message": f"Marks for '{rubric.criterion_name}' must be between 0 and {rubric.max_marks}"}), 400
+        total += marks
+
+    evaluation = booking.evaluation
+    if not evaluation:
+        evaluation = Evaluation(
+            booking_id=booking.id,
+            student_id=booking.student_id,
+            examiner_id=user.id,
+            total_marks=total,
+            remarks=remarks,
+            status="Submitted"
+        )
+        db.session.add(evaluation)
+        db.session.flush()
+    else:
+        evaluation.total_marks = total
+        evaluation.remarks = remarks
+        EvaluationScore.query.filter_by(evaluation_id=evaluation.id).delete()
+
+    for s in scores_data:
+        score_row = EvaluationScore(
+            evaluation_id=evaluation.id,
+            rubric_id=s["rubric_id"],
+            marks=float(s["marks"])
+        )
+        db.session.add(score_row)
+
+    booking.status = "Completed"
+    db.session.commit()
+    return jsonify({"message": "Evaluation submitted successfully", "evaluation": evaluation.to_dict()}), 200
