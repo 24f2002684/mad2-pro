@@ -9,6 +9,7 @@ from extensions import db, jwt
 from models import User
 from routes.auth import auth_bp
 from routes.admin import admin_bp
+from routes.examiner import examiner_bp
 
 def create_admin(app):
     # Programmatically creates the default admin user if one does not exist
@@ -47,6 +48,7 @@ def create_app(config_class=Config):
     # Register API blueprints
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(examiner_bp)
 
     # Entry point route for Single Page Application
     @app.route("/")
