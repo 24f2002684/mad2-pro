@@ -2,11 +2,13 @@
 # Student blueprint for EMP-V2.
 # Handles student dashboard metrics, profile management, examination browsing, slot booking, and cancellation.
 
+import os
 from datetime import date
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, send_from_directory
 from extensions import db
 from models import User, Course, Examination, Slot, Booking
 from helpers import role_required, get_current_user, is_valid_phone
+from config import Config
 
 student_bp = Blueprint("student", __name__, url_prefix="/api/student")
 
@@ -208,3 +210,52 @@ def get_student_history():
         result.append(d)
 
     return jsonify(result), 200
+
+# --- USER-TRIGGERED CSV EXPORT ---
+
+@student_bp.route("/export", methods=["POST"])
+@role_required("student")
+def trigger_export():
+    # Initiates asynchronous Celery task to export student's examination history
+    user = get_current_user()
+    try:
+        from tasks import export_student_history_job
+        try:
+            async_task = export_student_history_job.delay(user.id)
+            return jsonify({"task_id": async_task.id, "status": "PENDING"}), 202
+        except Exception as broker_err:
+            # Fallback to direct execution if Celery broker/worker is offline during local evaluation
+            print(f"[CELERY FALLBACK] Executing export directly: {broker_err}")
+            res = export_student_history_job(user.id)
+            return jsonify({"task_id": "direct_complete", "status": "SUCCESS", "filename": res.get("filename")}), 200
+    except Exception as e:
+        return jsonify({"message": f"Export failed: {str(e)}"}), 500
+
+@student_bp.route("/export/<task_id>", methods=["GET"])
+@role_required("student")
+def check_export_status(task_id):
+    # Polls status of Celery export job
+    if task_id == "direct_complete":
+        return jsonify({"status": "SUCCESS"}), 200
+    try:
+        from celery.result import AsyncResult
+        result = AsyncResult(task_id)
+        if result.state == "SUCCESS":
+            return jsonify({"status": "SUCCESS", "filename": result.result.get("filename")}), 200
+        elif result.state in ["FAILURE", "REVOKED"]:
+            return jsonify({"status": "FAILURE", "message": "Background task failed"}), 500
+        else:
+            return jsonify({"status": result.state}), 200
+    except Exception as err:
+        return jsonify({"status": "FAILURE", "message": str(err)}), 500
+
+@student_bp.route("/export/download/<filename>", methods=["GET"])
+@role_required("student")
+def download_export(filename):
+    # Securely serves generated CSV export file to authenticated student
+    user = get_current_user()
+    if not filename.startswith(f"student_{user.id}_"):
+        return jsonify({"message": "Forbidden: You cannot access other students' exports"}), 403
+
+    exports_dir = os.path.join(Config.BASE_DIR, "exports")
+    return send_from_directory(exports_dir, filename, as_attachment=True)

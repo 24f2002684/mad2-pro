@@ -421,3 +421,31 @@ def reschedule_booking(booking_id):
     booking.slot_id = new_slot.id
     db.session.commit()
     return jsonify({"message": "Booking rescheduled successfully", "booking": booking.to_dict()}), 200
+
+# --- MANUAL CELERY JOBS TRIGGER FOR VIVA DEMO ---
+
+@admin_bp.route("/trigger-job/daily-reminder", methods=["POST"])
+@role_required("admin")
+def trigger_daily_reminder():
+    # Manually triggers the Celery daily reminder batch job for viva demonstration
+    from tasks import daily_reminder_job
+    try:
+        task = daily_reminder_job.delay()
+        return jsonify({"message": "Daily reminder job dispatched", "task_id": task.id}), 202
+    except Exception as e:
+        print(f"[CELERY FALLBACK] Running reminder job directly: {e}")
+        res = daily_reminder_job()
+        return jsonify({"message": "Daily reminder job executed (direct)", "result": res}), 200
+
+@admin_bp.route("/trigger-job/monthly-report", methods=["POST"])
+@role_required("admin")
+def trigger_monthly_report():
+    # Manually triggers the Celery monthly summary report for viva demonstration
+    from tasks import monthly_report_job
+    try:
+        task = monthly_report_job.delay()
+        return jsonify({"message": "Monthly report job dispatched", "task_id": task.id}), 202
+    except Exception as e:
+        print(f"[CELERY FALLBACK] Running monthly report directly: {e}")
+        res = monthly_report_job()
+        return jsonify({"message": "Monthly report job executed (direct)", "result": res}), 200

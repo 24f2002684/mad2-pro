@@ -60,7 +60,7 @@ mad2-pro/
 
 ---
 
-## Placeholder Run Instructions
+## Setup & Execution Guide
 
 ### 1. Environment Setup
 ```powershell
@@ -73,8 +73,10 @@ pip install -r requirements.txt
 ```
 
 ### 2. Start Redis Server
-Ensure Redis is running locally on port `6379`.
-- On Windows: Use WSL (`sudo service redis-server start`) or Memurai / native Redis executable.
+Redis is required for Celery background tasks and API caching. Choose one of the following methods on Windows:
+- **Option A (WSL)**: `wsl` -> `sudo service redis-server start`
+- **Option B (Docker)**: `docker run -d -p 6379:6379 --name emp-redis redis:alpine`
+- **Option C (Memurai / Native)**: Start `memurai.exe` or `redis-server.exe` on port `6379`.
 
 ### 3. Run Flask Application
 ```powershell
@@ -83,6 +85,7 @@ python app.py
 Access the application at `http://localhost:5000`.
 
 ### 4. Run Celery Worker (Windows)
+> **Important for Windows**: Always include `-P solo` because the default prefork pool is not supported on Windows.
 ```powershell
 celery -A tasks.celery worker -l info -P solo
 ```
@@ -91,3 +94,49 @@ celery -A tasks.celery worker -l info -P solo
 ```powershell
 celery -A tasks.celery beat -l info
 ```
+
+---
+
+## Default Credentials
+
+| Role | Email | Password |
+|---|---|---|
+| **Admin** | `admin@emp.com` | `Admin@123` |
+| **Examiner** | Created by Admin | Generated 8-character random password (sent via email / logged in `outbox.log`) |
+| **Student** | Self-registered | Chosen at registration (min 6 characters) |
+
+---
+
+## Live Viva Demonstration: How to Trigger Celery Jobs Manually
+
+To demonstrate Celery jobs on demand during your viva evaluation without waiting for the scheduled crontab times:
+
+### 1. Trigger Daily Reminder Job (Normally runs at 08:00 IST)
+Emails students with booked examinations scheduled for tomorrow:
+```powershell
+# Via PowerShell / curl
+curl.exe -X POST http://localhost:5000/api/admin/trigger-job/daily-reminder -H "Authorization: Bearer <ADMIN_JWT_TOKEN>"
+```
+*Or directly via Python in a single command:*
+```powershell
+python -c "from tasks import daily_reminder_job; print(daily_reminder_job())"
+```
+
+### 2. Trigger Monthly Summary Report Job (Normally runs 1st of month at 09:00 IST)
+Generates and sends the HTML performance summary to the administrator:
+```powershell
+# Via PowerShell / curl
+curl.exe -X POST http://localhost:5000/api/admin/trigger-job/monthly-report -H "Authorization: Bearer <ADMIN_JWT_TOKEN>"
+```
+*Or directly via Python in a single command:*
+```powershell
+python -c "from tasks import monthly_report_job; print(monthly_report_job())"
+```
+
+### 3. User-Triggered CSV Export
+1. Log into the student portal as a candidate.
+2. Navigate to **History** (`#/student/history`).
+3. Click the **Export History (CSV)** button in the top right.
+4. The client initiates the Celery task and polls `/api/student/export/<task_id>`.
+5. Once complete, a green banner appears with a **Download CSV** link.
+6. Check `exports/` folder or click Download to inspect the CSV columns (`Student ID, Examination Name, Course, Examination Date, Examiner, Marks Obtained, Booking Status`).

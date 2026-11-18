@@ -1,14 +1,21 @@
 // static/js/components/StudentHistory.js
-// Student examination history, cancellation, and published scores review component.
+// Student examination history, cancellation, and Celery asynchronous CSV export component.
 
 const StudentHistory = {
     data() {
         return {
             bookings: [],
             loading: false,
+            exporting: false,
+            downloadFilename: "",
             errorMessage: "",
             successMessage: ""
         };
+    },
+    computed: {
+        authToken() {
+            return window.API.getToken();
+        }
     },
     mounted() {
         this.fetchHistory();
@@ -35,6 +42,53 @@ const StudentHistory = {
             } catch (err) {
                 this.errorMessage = err.message || "Failed to cancel booking";
             }
+        },
+        async triggerExport() {
+            this.exporting = true;
+            this.downloadFilename = "";
+            this.errorMessage = "";
+            this.successMessage = "Initiating background CSV export...";
+
+            try {
+                const res = await window.API.post("/api/student/export");
+                if (res.status === "SUCCESS" && res.filename) {
+                    this.downloadFilename = res.filename;
+                    this.successMessage = "Export complete! Click below to download your CSV file.";
+                    this.exporting = false;
+                    return;
+                }
+
+                // Poll status for Celery task
+                const taskId = res.task_id;
+                const pollInterval = setInterval(async () => {
+                    try {
+                        const check = await window.API.get(`/api/student/export/${taskId}`);
+                        if (check.status === "SUCCESS") {
+                            clearInterval(pollInterval);
+                            this.downloadFilename = check.filename;
+                            this.successMessage = "Export complete! Notification sent to your email.";
+                            this.exporting = false;
+                        } else if (check.status === "FAILURE") {
+                            clearInterval(pollInterval);
+                            this.errorMessage = "Background export task encountered an error.";
+                            this.exporting = false;
+                        }
+                    } catch (pollErr) {
+                        clearInterval(pollInterval);
+                        this.errorMessage = "Failed to poll export status.";
+                        this.exporting = false;
+                    }
+                }, 1000);
+            } catch (err) {
+                this.errorMessage = err.message || "Could not start export task";
+                this.exporting = false;
+            }
+        },
+        downloadFile() {
+            if (!this.downloadFilename) return;
+            // Uses API request or direct authenticated download URL
+            const token = window.API.getToken();
+            window.open(`/api/student/export/download/${this.downloadFilename}?token=${token}`, "_blank");
         }
     },
     template: `
@@ -44,11 +98,31 @@ const StudentHistory = {
                 <h3 class="fw-bold text-dark mb-0">Examination History & Results</h3>
                 <p class="text-muted small">Track your booked slots, cancellation status, and published evaluation marks</p>
             </div>
-            <router-link to="/student/exams" class="btn btn-primary btn-sm">+ Book New Slot</router-link>
+            <div>
+                <button class="btn btn-outline-success btn-sm me-2" @click="triggerExport" :disabled="exporting">
+                    <span v-if="exporting" class="spinner-border spinner-border-sm me-1"></span>
+                    {{ exporting ? 'Exporting...' : 'Export History (CSV)' }}
+                </button>
+                <router-link to="/student/exams" class="btn btn-primary btn-sm">+ Book New Slot</router-link>
+            </div>
         </div>
 
         <div v-if="errorMessage" class="alert alert-danger py-2 small">{{ errorMessage }}</div>
-        <div v-if="successMessage" class="alert alert-success py-2 small">{{ successMessage }}</div>
+
+        <!-- Success Alert with Download Button -->
+        <div v-if="successMessage" class="alert alert-success py-2 d-flex justify-content-between align-items-center small">
+            <div>
+                <i class="bi bi-check-circle-fill me-1"></i> {{ successMessage }}
+            </div>
+            <a 
+                v-if="downloadFilename" 
+                :href="'/api/student/export/download/' + downloadFilename + '?token=' + authToken" 
+                class="btn btn-sm btn-success fw-bold ms-3"
+                target="_blank"
+            >
+                &darr; Download CSV
+            </a>
+        </div>
 
         <div class="card">
             <div class="table-responsive">

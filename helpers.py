@@ -63,7 +63,7 @@ def send_email(to, subject, html):
     msg.set_content(html, subtype="html")
 
     try:
-        with smtplib.SMTP(mail_host, mail_port, timeout=3) as server:
+        with smtplib.SMTP(mail_host, mail_port, timeout=1) as server:
             server.send_message(msg)
             print(f"[EMAIL SENT] To: {to} | Subject: {subject}")
             return True
