@@ -7,7 +7,7 @@ import string
 from flask import Blueprint, request, jsonify
 from werkzeug.security import generate_password_hash
 from extensions import db
-from models import User, Course, Examination, ExamExaminer, Rubric, Slot, Booking, ExaminerProfile
+from models import User, Course, Examination, ExamExaminer, Rubric, Slot, Booking, ExaminerProfile, Evaluation
 from helpers import role_required, is_valid_email, is_valid_phone, send_email, cache_get, cache_set, cache_delete
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/api/admin")
@@ -23,6 +23,51 @@ EXAM_TRANSITIONS = {
 
 # --- DASHBOARD & METRICS ---
 
+def calculate_admin_analytics():
+    # Computes aggregated metrics, exam participation, pass/fail, and monthly booking trends
+    exams = Examination.query.all()
+    participation_labels = [e.name for e in exams]
+    participation_data = [
+        Booking.query.join(Slot).filter(Slot.exam_id == e.id, Booking.status != "Cancelled").count()
+        for e in exams
+    ]
+
+    evaluations = Evaluation.query.all()
+    passed_count = sum(1 for ev in evaluations if ev.total_marks >= (0.4 * (ev.booking.slot.examination.max_marks if ev.booking and ev.booking.slot and ev.booking.slot.examination else 100)))
+    failed_count = len(evaluations) - passed_count
+
+    bookings = Booking.query.order_by(Booking.booked_at).all()
+    month_counts = {}
+    for b in bookings:
+        if b.booked_at:
+            m_key = b.booked_at.strftime("%Y-%m")
+            month_counts[m_key] = month_counts.get(m_key, 0) + 1
+    sorted_months = sorted(month_counts.keys())
+
+    return {
+        "participation": {
+            "labels": participation_labels if participation_labels else ["No Exams"],
+            "data": participation_data if participation_data else [0]
+        },
+        "pass_fail": {
+            "labels": ["Passed (≥40%)", "Failed (<40%)"],
+            "data": [passed_count, failed_count]
+        },
+        "monthly_trends": {
+            "labels": sorted_months if sorted_months else ["No Data"],
+            "data": [month_counts[m] for m in sorted_months] if sorted_months else [0]
+        },
+        "totals": {
+            "courses": Course.query.count(),
+            "exams": len(exams),
+            "examiners": User.query.filter_by(role="examiner").count(),
+            "students": User.query.filter_by(role="student").count(),
+            "slots": Slot.query.count(),
+            "bookings": len(bookings),
+            "evaluations": len(evaluations)
+        }
+    }
+
 @admin_bp.route("/dashboard", methods=["GET"])
 @role_required("admin")
 def get_dashboard_counts():
@@ -35,6 +80,21 @@ def get_dashboard_counts():
         "slots": Slot.query.count(),
         "bookings": Booking.query.count()
     }), 200
+
+@admin_bp.route("/analytics", methods=["GET"])
+@role_required("admin")
+def get_analytics():
+    # Returns participation, pass/fail, and monthly booking trends for charts
+    cached = cache_get("admin:analytics")
+    if cached:
+        resp = jsonify(cached)
+        resp.headers["X-Cache"] = "HIT"
+        return resp, 200
+    data = calculate_admin_analytics()
+    cache_set("admin:analytics", data, timeout=60)
+    resp = jsonify(data)
+    resp.headers["X-Cache"] = "MISS"
+    return resp, 200
 
 # --- COURSE CRUD ---
 
