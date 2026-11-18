@@ -5,7 +5,7 @@
 from flask import Blueprint, request, jsonify, g
 from extensions import db
 from models import Examination, Slot, Booking, ExamExaminer, Rubric, Evaluation, EvaluationScore
-from helpers import role_required, get_current_user
+from helpers import role_required, get_current_user, cache_delete
 
 examiner_bp = Blueprint("examiner", __name__, url_prefix="/api/examiner")
 
@@ -107,6 +107,7 @@ def create_slot():
     )
     db.session.add(slot)
     db.session.commit()
+    cache_delete(f"cache:exam_slots:{exam.id}", "cache:student_exams*")
     return jsonify(slot.to_dict()), 201
 
 @examiner_bp.route("/slots/<int:slot_id>", methods=["PUT"])
@@ -140,6 +141,7 @@ def update_slot(slot_id):
     slot.meeting_link = data.get("meeting_link", slot.meeting_link)
 
     db.session.commit()
+    cache_delete(f"cache:exam_slots:{slot.exam_id}", "cache:student_exams*")
     return jsonify(slot.to_dict()), 200
 
 @examiner_bp.route("/slots/<int:slot_id>", methods=["DELETE"])
@@ -157,8 +159,10 @@ def delete_slot(slot_id):
     if slot.bookings:
         return jsonify({"message": "Cannot delete a slot that already has student bookings"}), 409
 
+    exam_id = slot.exam_id
     db.session.delete(slot)
     db.session.commit()
+    cache_delete(f"cache:exam_slots:{exam_id}", "cache:student_exams*")
     return jsonify({"message": "Slot deleted successfully"}), 200
 
 @examiner_bp.route("/slots/<int:slot_id>/bookings", methods=["GET"])
@@ -200,6 +204,7 @@ def complete_slot(slot_id):
             exam.status = "Completed"
 
     db.session.commit()
+    cache_delete(f"cache:exam_slots:{slot.exam_id}", "cache:student_exams*", "cache:admin_exams*")
     return jsonify({"message": "Slot marked as Completed", "slot": slot.to_dict(), "exam_status": exam.status}), 200
 
 @examiner_bp.route("/bookings/<int:booking_id>/evaluation", methods=["GET"])

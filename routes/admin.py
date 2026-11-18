@@ -8,7 +8,7 @@ from flask import Blueprint, request, jsonify
 from werkzeug.security import generate_password_hash
 from extensions import db
 from models import User, Course, Examination, ExamExaminer, Rubric, Slot, Booking, ExaminerProfile
-from helpers import role_required, is_valid_email, is_valid_phone, send_email
+from helpers import role_required, is_valid_email, is_valid_phone, send_email, cache_get, cache_set, cache_delete
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/api/admin")
 
@@ -92,17 +92,29 @@ def delete_course(course_id):
 @admin_bp.route("/exams", methods=["GET"])
 @role_required("admin")
 def list_exams():
-    # Lists all examinations with optional ?q= filter
+    # Lists all examinations with optional ?q= filter and Redis caching
     q = request.args.get("q", "").strip()
+    cache_key = f"cache:admin_exams:{q}"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        resp = jsonify(cached)
+        resp.headers["X-Cache"] = "HIT"
+        return resp, 200
+
     query = Examination.query
     if q:
         query = query.filter((Examination.name.ilike(f"%{q}%")) | (Examination.exam_type.ilike(f"%{q}%")))
-    return jsonify([e.to_dict() for e in query.order_by(Examination.id.desc()).all()]), 200
+    result = [e.to_dict() for e in query.order_by(Examination.id.desc()).all()]
+    cache_set(cache_key, result, timeout=120)
+
+    resp = jsonify(result)
+    resp.headers["X-Cache"] = "MISS"
+    return resp, 200
 
 @admin_bp.route("/exams", methods=["POST"])
 @role_required("admin")
 def create_exam():
-    # Creates an examination with timeline dates
+    # Creates an examination with timeline dates and invalidates exam caches
     data = request.get_json() or {}
     required = ["course_id", "name", "exam_type", "duration", "max_marks", "slot_creation_start", "slot_creation_end", "booking_start", "booking_end"]
     if any(not data.get(f) for f in required):
@@ -127,6 +139,7 @@ def create_exam():
     )
     db.session.add(exam)
     db.session.commit()
+    cache_delete("cache:admin_exams*", "cache:student_exams*")
     return jsonify(exam.to_dict()), 201
 
 @admin_bp.route("/exams/<int:exam_id>", methods=["GET"])
@@ -139,7 +152,7 @@ def get_exam(exam_id):
 @admin_bp.route("/exams/<int:exam_id>", methods=["PUT"])
 @role_required("admin")
 def update_exam(exam_id):
-    # Updates examination details and timeline
+    # Updates examination details and invalidates caches
     exam = Examination.query.get_or_404(exam_id)
     data = request.get_json() or {}
     exam.name = data.get("name", exam.name).strip()
@@ -152,23 +165,25 @@ def update_exam(exam_id):
     exam.booking_start = data.get("booking_start", exam.booking_start)
     exam.booking_end = data.get("booking_end", exam.booking_end)
     db.session.commit()
+    cache_delete("cache:admin_exams*", "cache:student_exams*", f"cache:exam_slots:{exam_id}")
     return jsonify(exam.to_dict()), 200
 
 @admin_bp.route("/exams/<int:exam_id>", methods=["DELETE"])
 @role_required("admin")
 def delete_exam(exam_id):
-    # Deletes examination only if it has no slots or bookings
+    # Deletes examination and clears related caches
     exam = Examination.query.get_or_404(exam_id)
     if exam.slots:
         return jsonify({"message": "Cannot delete exam with existing slots"}), 409
     db.session.delete(exam)
     db.session.commit()
+    cache_delete("cache:admin_exams*", "cache:student_exams*", f"cache:exam_slots:{exam_id}", f"cache:exam_rubrics:{exam_id}")
     return jsonify({"message": "Examination deleted successfully"}), 200
 
 @admin_bp.route("/exams/<int:exam_id>/status", methods=["PUT"])
 @role_required("admin")
 def update_exam_status(exam_id):
-    # Validates and updates examination lifecycle status
+    # Validates and updates examination lifecycle status and clears caches
     exam = Examination.query.get_or_404(exam_id)
     new_status = (request.get_json() or {}).get("status")
     allowed = EXAM_TRANSITIONS.get(exam.status, [])
@@ -176,6 +191,7 @@ def update_exam_status(exam_id):
         return jsonify({"message": f"Invalid transition from '{exam.status}' to '{new_status}'"}), 400
     exam.status = new_status
     db.session.commit()
+    cache_delete("cache:admin_exams*", "cache:student_exams*", f"cache:exam_slots:{exam_id}")
     return jsonify({"message": f"Exam status updated to {new_status}", "exam": exam.to_dict()}), 200
 
 # --- RUBRICS MANAGEMENT ---
@@ -183,14 +199,24 @@ def update_exam_status(exam_id):
 @admin_bp.route("/exams/<int:exam_id>/rubrics", methods=["GET"])
 @role_required("admin")
 def list_rubrics(exam_id):
-    # Lists all evaluation rubrics for an examination
-    rubrics = Rubric.query.filter_by(exam_id=exam_id).all()
-    return jsonify([r.to_dict() for r in rubrics]), 200
+    # Lists all evaluation rubrics for an examination with Redis caching
+    cache_key = f"cache:exam_rubrics:{exam_id}"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        resp = jsonify(cached)
+        resp.headers["X-Cache"] = "HIT"
+        return resp, 200
+
+    rubrics = [r.to_dict() for r in Rubric.query.filter_by(exam_id=exam_id).all()]
+    cache_set(cache_key, rubrics, timeout=180)
+    resp = jsonify(rubrics)
+    resp.headers["X-Cache"] = "MISS"
+    return resp, 200
 
 @admin_bp.route("/exams/<int:exam_id>/rubrics", methods=["POST"])
 @role_required("admin")
 def create_rubric(exam_id):
-    # Adds a new rubric criterion to an examination
+    # Adds a new rubric criterion and clears rubric cache
     data = request.get_json() or {}
     name = data.get("criterion_name", "").strip()
     max_marks = data.get("max_marks")
@@ -205,17 +231,20 @@ def create_rubric(exam_id):
     )
     db.session.add(rubric)
     db.session.commit()
+    cache_delete(f"cache:exam_rubrics:{exam_id}")
     return jsonify(rubric.to_dict()), 201
 
 @admin_bp.route("/rubrics/<int:rubric_id>", methods=["DELETE"])
 @role_required("admin")
 def delete_rubric(rubric_id):
-    # Deletes a rubric criterion if no scores are linked
+    # Deletes a rubric criterion and clears rubric cache
     rubric = Rubric.query.get_or_404(rubric_id)
+    exam_id = rubric.exam_id
     if rubric.scores:
         return jsonify({"message": "Cannot delete rubric criterion used in student evaluations"}), 409
     db.session.delete(rubric)
     db.session.commit()
+    cache_delete(f"cache:exam_rubrics:{exam_id}")
     return jsonify({"message": "Rubric deleted successfully"}), 200
 
 # --- EXAMINER ASSIGNMENT & MANAGEMENT ---

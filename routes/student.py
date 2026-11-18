@@ -7,7 +7,7 @@ from datetime import date
 from flask import Blueprint, request, jsonify, send_from_directory
 from extensions import db
 from models import User, Course, Examination, Slot, Booking
-from helpers import role_required, get_current_user, is_valid_phone
+from helpers import role_required, get_current_user, is_valid_phone, cache_get, cache_set, cache_delete
 from config import Config
 
 student_bp = Blueprint("student", __name__, url_prefix="/api/student")
@@ -71,12 +71,19 @@ def update_student_profile():
 @student_bp.route("/exams", methods=["GET"])
 @role_required("student")
 def list_student_exams():
-    # Lists examinations open or scheduled for students with search and filter capabilities
+    # Lists examinations open or scheduled for students with Redis caching
     user = get_current_user()
     q = request.args.get("q", "").strip()
     course_id = request.args.get("course_id")
     exam_type = request.args.get("exam_type")
     status_filter = request.args.get("status")
+
+    cache_key = f"cache:student_exams:u={user.id}:q={q}:c={course_id}:t={exam_type}:s={status_filter}"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        resp = jsonify(cached)
+        resp.headers["X-Cache"] = "HIT"
+        return resp, 200
 
     query = Examination.query.filter(Examination.status.in_(["Booking Open", "Closed", "Completed"]))
     if q:
@@ -105,20 +112,35 @@ def list_student_exams():
         d["available_slots"] = len([s for s in e.slots if s.status == "Available" and s.available_seats > 0])
         result.append(d)
 
-    return jsonify(result), 200
+    cache_set(cache_key, result, timeout=120)
+    resp = jsonify(result)
+    resp.headers["X-Cache"] = "MISS"
+    return resp, 200
 
 @student_bp.route("/exams/<int:exam_id>/slots", methods=["GET"])
 @role_required("student")
 def list_exam_slots(exam_id):
-    # Lists available slots for booking under an examination
+    # Lists available slots for an examination with Redis caching
+    cache_key = f"cache:exam_slots:{exam_id}"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        resp = jsonify(cached)
+        resp.headers["X-Cache"] = "HIT"
+        return resp, 200
+
     exam = Examination.query.get_or_404(exam_id)
     slots = Slot.query.filter_by(exam_id=exam.id).order_by(Slot.date.asc(), Slot.start_time.asc()).all()
-    return jsonify([s.to_dict() for s in slots]), 200
+    result = [s.to_dict() for s in slots]
+    cache_set(cache_key, result, timeout=120)
+
+    resp = jsonify(result)
+    resp.headers["X-Cache"] = "MISS"
+    return resp, 200
 
 @student_bp.route("/bookings", methods=["POST"])
 @role_required("student")
 def book_slot():
-    # Books an examination slot enforcing strict business rules and limits
+    # Books an examination slot and invalidates related slot and exam caches
     user = get_current_user()
     data = request.get_json() or {}
     slot_id = data.get("slot_id")
@@ -158,13 +180,14 @@ def book_slot():
 
     db.session.add(booking)
     db.session.commit()
+    cache_delete(f"cache:exam_slots:{exam.id}", f"cache:student_exams:u={user.id}*")
 
     return jsonify({"message": "Slot booked successfully", "booking": booking.to_dict()}), 201
 
 @student_bp.route("/bookings/<int:booking_id>/cancel", methods=["PUT"])
 @role_required("student")
 def cancel_booking(booking_id):
-    # Cancels an active booking and returns the seat back to slot capacity
+    # Cancels an active booking and invalidates related slot and exam caches
     user = get_current_user()
     booking = Booking.query.get_or_404(booking_id)
 
@@ -187,6 +210,7 @@ def cancel_booking(booking_id):
         slot.status = "Available"
 
     db.session.commit()
+    cache_delete(f"cache:exam_slots:{exam.id}", f"cache:student_exams:u={user.id}*")
     return jsonify({"message": "Booking cancelled successfully"}), 200
 
 @student_bp.route("/history", methods=["GET"])

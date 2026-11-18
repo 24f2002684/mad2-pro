@@ -4,12 +4,15 @@
 
 import os
 import re
+import json
+import redis
 import smtplib
 from email.message import EmailMessage
 from functools import wraps
 from flask import jsonify, g, current_app
 from flask_jwt_extended import verify_jwt_in_request, get_jwt, get_jwt_identity
 from models import User
+from config import Config
 
 def role_required(*allowed_roles):
     # Decorator to restrict endpoints to specified user roles
@@ -78,15 +81,63 @@ def send_email(to, subject, html):
             print(f"[EMAIL ERROR] Could not write to outbox.log: {log_err}")
         return False
 
-# Redis Caching Wrappers (Placeholder functions for M8)
+# Redis Caching Wrappers (Milestone 8)
+_redis_client = None
+
+def get_redis_client():
+    # Lazily initializes redis-py connection with short timeouts for graceful degradation
+    global _redis_client
+    if _redis_client is None:
+        try:
+            _redis_client = redis.from_url(
+                Config.REDIS_URL,
+                decode_responses=True,
+                protocol=2,
+                socket_connect_timeout=0.5,
+                socket_timeout=0.5
+            )
+            # Ping to verify active connection
+            _redis_client.ping()
+        except Exception:
+            _redis_client = False
+    return _redis_client if _redis_client is not False else None
+
 def cache_get(key):
-    # Placeholder for Redis cache get
+    # Retrieves cached JSON data; fails gracefully if Redis is offline
+    try:
+        r = get_redis_client()
+        if r:
+            val = r.get(key)
+            if val is not None:
+                return json.loads(val)
+    except Exception:
+        pass
     return None
 
 def cache_set(key, value, timeout=120):
-    # Placeholder for Redis cache set
+    # Serializes and caches data in Redis with TTL; fails gracefully if offline
+    try:
+        r = get_redis_client()
+        if r:
+            r.setex(key, timeout, json.dumps(value))
+            return True
+    except Exception:
+        pass
     return False
 
-def cache_delete(*keys):
-    # Placeholder for Redis cache delete
+def cache_delete(*keys_or_patterns):
+    # Invalidates exact keys or wildcard patterns from Redis cache
+    try:
+        r = get_redis_client()
+        if r:
+            for item in keys_or_patterns:
+                if "*" in item:
+                    matching = r.keys(item)
+                    if matching:
+                        r.delete(*matching)
+                else:
+                    r.delete(item)
+            return True
+    except Exception:
+        pass
     return False
