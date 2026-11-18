@@ -5,6 +5,45 @@
 import os
 import csv
 from datetime import date, timedelta, datetime
+
+# Compatibility fix for Windows Redis (RESP2 / Redis 5.x) with redis-py 8.x and kombu
+try:
+    import redis.connection
+    import redis.maint_notifications
+    import redis.client
+    redis.connection.DEFAULT_RESP_VERSION = 2
+    redis.maint_notifications.MaintNotificationsConfig.__init__.__defaults__ = (False, True, 10, None)
+
+    # Redis 5.x Lua script compatibility (avoids ZADD GT syntax error on Redis 5)
+    from kombu.transport import redis as kombu_redis
+    kombu_redis.REFRESH_BINDING = """
+    redis.call('SADD', KEYS[1], ARGV[1])
+    local now = redis.call('TIME')
+    local ms = tonumber(now[1]) * 1000 + math.floor(tonumber(now[2]) / 1000)
+    local current = redis.call('ZSCORE', KEYS[2], ARGV[2])
+    local new_score = ms + tonumber(ARGV[3])
+    if not current or new_score > tonumber(current) then
+        redis.call('ZADD', KEYS[2], new_score, ARGV[2])
+    end
+    """
+
+    # Redis 5.x ZRANGE BYSCORE compatibility (avoids syntax error on Redis 5)
+    _orig_zrange = redis.client.Redis.zrange
+    def _compat_zrange(self, name, start, end, **kwargs):
+        if kwargs.get('byscore'):
+            desc = kwargs.get('desc', False)
+            offset = kwargs.get('offset')
+            num = kwargs.get('num')
+            withscores = kwargs.get('withscores', False)
+            if desc:
+                return self.zrevrangebyscore(name, start, end, start=offset, num=num, withscores=withscores)
+            else:
+                return self.zrangebyscore(name, start, end, start=offset, num=num, withscores=withscores)
+        return _orig_zrange(self, name, start, end, **kwargs)
+    redis.client.Redis.zrange = _compat_zrange
+except Exception:
+    pass
+
 from celery import Celery
 from celery.schedules import crontab
 from config import Config
